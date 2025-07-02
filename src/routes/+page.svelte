@@ -192,7 +192,7 @@
   }
 
   onMount(async () => {
-    await d3.csv("/hyglike_from_athyg_v32.csv").then((raw) => {
+    await d3.csv("hyglike_from_athyg_v32.csv").then((raw) => {
       stars = raw.filter(
         (s) => s.mag !== undefined && !isNaN(+s.mag) && +s.mag < 6
       );

@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+		"build": "vite build && touch build/.nojekyll",
     "preview": "vite preview",
-    "deploy": "gh-pages -d build -t true"
+		"deploy": "gh-pages -d build --dotfiles"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^3.0.0",
