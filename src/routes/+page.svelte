@@ -3,7 +3,7 @@
   import * as d3 from "d3";
   import { onMount } from "svelte";
 
-  const query_radius = 100;
+  const query_radius = 140;
 
   let observer = {
     lat: 52.52,
@@ -19,10 +19,10 @@
   let showNames = true;
   let showCircles = true;
   let showStarNames = true;
-  let textSize = 6;
-  let circleSize = 8;
+  let textSize = 1.5;
+  let circleSize = 2;
 
-  let starColor = [0, 0, 0, 70];
+  let starColor = [170, 170, 170];
   let satColor = [0, 0, 0];
 
   const cities = [];
@@ -33,6 +33,8 @@
     A2: [4960, 7016],
     A1: [7016, 9933],
     A0: [9933, 14043],
+    "2xA0": [14043, 9933 * 2],
+    "7x7A4": [2480 * 7, 3508 * 7],
   };
 
   const a4Tiling = {
@@ -41,6 +43,8 @@
     A2: [2, 2],
     A1: [2, 4],
     A0: [4, 4],
+    "2xA0": [4, 8],
+    "7x7A4": [7, 7],
   };
 
   let selectedFormat = "A3";
@@ -194,7 +198,7 @@
   onMount(async () => {
     await d3.csv("hyglike_from_athyg_v32.csv").then((raw) => {
       stars = raw.filter(
-        (s) => s.mag !== undefined && !isNaN(+s.mag) && +s.mag < 6
+        (s) => s.mag !== undefined && !isNaN(+s.mag) && +s.mag < 20
       );
       starsReady = true;
     });
@@ -233,7 +237,7 @@
 
   let sketch = (p) => {
     p.setup = () => {
-      let dpr = 5; //window.devicePixelRatio || 1;
+      let dpr = 12; //window.devicePixelRatio || 1;
       let w = container?.offsetWidth || window.innerWidth;
       let h = container?.offsetHeight || window.innerHeight;
       p.createCanvas(
@@ -244,11 +248,14 @@
     };
 
     p.draw = () => {
+      const baseWidth = 2480;
+      const scale = p.width / baseWidth;
+
       if (!starsReady) {
         p.background("white");
         p.fill(0);
         p.textAlign(p.CENTER, p.CENTER);
-        p.textSize(22);
+        p.textSize(22 * scale);
         p.text("Loading stars...", p.width / 2, p.height / 2);
         return;
       }
@@ -257,7 +264,7 @@
       const date = new Date();
 
       p.noStroke();
-      p.textSize(textSize);
+      p.textSize(textSize * scale);
       p.textAlign(p.CENTER, p.CENTER);
       for (const star of stars) {
         const { alt, az } = raDecToAltAz(star, observer, date);
@@ -270,7 +277,7 @@
             observer.radius
           );
           p.fill(starColor);
-          const starSize = Math.max(2, 3 - star.mag);
+          const starSize = Math.max(1 * scale, 3 * scale - star.mag);
           p.ellipse(x, y, starSize, starSize);
 
           if (
@@ -281,11 +288,11 @@
             p.textSize(textSize);
             p.fill(starColor);
             p.stroke("white");
-            p.strokeWeight(2);
+            p.strokeWeight(2 * scale);
             const label = star.proper || star.hip || star.id;
-            p.text(label, x, y - starSize - 2);
+            p.text(label, x, y - starSize * scale - 1.2);
             p.noStroke();
-            p.strokeWeight(1);
+            p.strokeWeight(1 * scale);
 
             p.textSize(textSize);
           }
@@ -293,7 +300,7 @@
       }
 
       p.fill(satColor);
-      p.textSize(12);
+      p.textSize(12 * scale);
       for (const city of cities) {
         if (
           Math.abs(city.lat - observer.lat) < 0.1 &&
@@ -308,13 +315,13 @@
           p.height,
           observer.radius
         );
-        p.ellipse(x, y, 12, 12);
+        p.ellipse(x, y, 12 * scale, 12 * scale);
         p.textAlign(p.CENTER, p.TOP);
-        p.text(city.name, x, y + 8);
+        p.text(city.name, x, y + 8 * scale);
       }
 
       p.fill(satColor);
-      p.textSize(24);
+      p.textSize(24 * scale);
       p.textAlign(p.CENTER, p.CENTER);
       for (const c of cardinals) {
         const { x, y } = altAzToCanvas(
@@ -324,12 +331,12 @@
           p.height,
           observer.radius
         );
-        p.text(c.label, x, y - 18);
+        p.text(c.label, x, y - 18 * scale);
       }
 
       if (satellites.length > 0) {
         p.fill(satColor);
-        p.textSize(textSize);
+        p.textSize(textSize * scale);
         for (const sat of satellites) {
           const { alt, az } = geoToAltAz(sat, observer);
           if (alt > 0) {
@@ -342,12 +349,13 @@
             );
             if (showCircles) p.ellipse(x, y, circleSize, circleSize);
             if (showNames && !isOverlapping(x, y, p, sat.name, circleSize)) {
-              p.fill([...satColor, 90]);
+              // p.fill([...satColor, 90]);
+              p.fill(satColor);
               p.stroke("white");
-              p.strokeWeight(2);
-              p.text(sat.name, x, y - circleSize - 1);
+              p.strokeWeight(2 * scale);
+              p.text(sat.name, x, y - circleSize * scale - 1.2);
               p.noStroke();
-              p.strokeWeight(1);
+              p.strokeWeight(1 * scale);
               p.fill(satColor);
             }
           }
@@ -409,7 +417,7 @@
     };
 
     p.windowResized = () => {
-      let dpr = 5; //window.devicePixelRatio || 1;
+      let dpr = 12; //window.devicePixelRatio || 1;
       let w = container?.offsetWidth || window.innerWidth;
       let h = container?.offsetHeight || window.innerHeight;
       p.resizeCanvas(w * dpr, h * dpr);
@@ -418,17 +426,21 @@
     };
   };
 
-  function splitAndSaveTiles(format = selectedFormat) {
+  async function splitAndSaveTiles(format = selectedFormat) {
     const [cols, rows] = a4Tiling[format];
     const canvas = container.querySelector("canvas");
     if (!canvas) return;
 
-    let dpr = 5; //window.devicePixelRatio || 1;
+    let dpr = 12; //window.devicePixelRatio || 1;
 
     const sourceW = crop.w * dpr;
     const sourceH = crop.h * dpr;
     const tileSourceW = sourceW / cols;
     const tileSourceH = sourceH / rows;
+
+    function sleep(ms) {
+      return new Promise((res) => setTimeout(res, ms));
+    }
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
@@ -448,6 +460,8 @@
         a.href = url;
         a.download = `${format}_tile_row-${row + 1}_col-${col + 1}.png`;
         a.click();
+
+        await sleep(100);
       }
     }
   }
@@ -474,12 +488,12 @@
   </label>
   <label>
     Text Size:
-    <input type="range" min="6" max="24" bind:value={textSize} />
+    <input type="range" min="0.1" max="24" step="0.1" bind:value={textSize} />
     {textSize}px
   </label>
   <label>
     Circle Size:
-    <input type="range" min="1" max="20" bind:value={circleSize} />
+    <input type="range" min="0.1" max="20" step="0.1" bind:value={circleSize} />
     {circleSize}px
   </label>
   <label>
