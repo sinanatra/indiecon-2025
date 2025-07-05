@@ -2,6 +2,7 @@
   import P5 from "p5-svelte";
   import * as d3 from "d3";
   import { onMount } from "svelte";
+  import About from "$lib/components/About.svelte";
 
   const query_radius = 140;
 
@@ -198,7 +199,7 @@
   onMount(async () => {
     await d3.csv("hyglike_from_athyg_v32.csv").then((raw) => {
       stars = raw.filter(
-        (s) => s.mag !== undefined && !isNaN(+s.mag) && +s.mag < 20
+        (s) => s.mag !== undefined && !isNaN(+s.mag) && +s.mag < 8
       );
       starsReady = true;
     });
@@ -237,12 +238,12 @@
 
   let sketch = (p) => {
     p.setup = () => {
-      let dpr = 12; //window.devicePixelRatio || 1;
+      let dpr = 10; //window.devicePixelRatio || 1;
       let w = container?.offsetWidth || window.innerWidth;
       let h = container?.offsetHeight || window.innerHeight;
       p.createCanvas(
-        container?.offsetWidth || window.innerWidth,
-        container?.offsetHeight || window.innerHeight
+        container?.offsetWidth * 1.1 || window.innerWidth,
+        container?.offsetHeight * 1.1 || window.innerHeight
       );
       p.pixelDensity(dpr);
     };
@@ -250,7 +251,6 @@
     p.draw = () => {
       const baseWidth = 2480;
       const scale = p.width / baseWidth;
-
       if (!starsReady) {
         p.background("white");
         p.fill(0);
@@ -263,44 +263,54 @@
       usedLabels = [];
       const date = new Date();
 
-      p.noStroke();
       p.textSize(textSize * scale);
       p.textAlign(p.CENTER, p.CENTER);
-      for (const star of stars) {
-        const { alt, az } = raDecToAltAz(star, observer, date);
-        if (alt > 0) {
-          const { x, y } = altAzToCanvas(
-            alt,
-            az,
-            p.width,
-            p.height,
-            observer.radius
-          );
-          p.fill(starColor);
-          const starSize = Math.max(1 * scale, 3 * scale - star.mag);
-          p.ellipse(x, y, starSize, starSize);
 
-          if (
-            showStarNames &&
-            star.proper &&
-            !isOverlapping(x, y, p, star.proper, starSize * 1.2)
-          ) {
-            p.textSize(textSize);
-            p.fill(starColor);
-            p.stroke("white");
-            p.strokeWeight(2 * scale);
-            const label = star.proper || star.hip || star.id;
-            p.text(label, x, y - starSize * scale - 1.2);
-            p.noStroke();
-            p.strokeWeight(1 * scale);
-
-            p.textSize(textSize);
+      if (showStarNames) {
+        for (const star of stars) {
+          const { alt, az } = raDecToAltAz(star, observer, date);
+          if (alt > 0 && star.proper) {
+            const { x, y } = altAzToCanvas(
+              alt,
+              az,
+              p.width,
+              p.height,
+              observer.radius
+            );
+            const starSize = Math.max(1 * scale, 3 * scale - star.mag);
+            if (!isOverlapping(x, y, p, star.proper, starSize * 1.2)) {
+              p.stroke("white");
+              p.strokeWeight(2 * scale);
+              p.fill(starColor);
+              p.text(star.proper, x, y - starSize * scale - 1.2);
+              p.noStroke();
+            }
           }
         }
       }
 
-      p.fill(satColor);
-      p.textSize(12 * scale);
+      if (showNames && satellites.length > 0) {
+        for (const sat of satellites) {
+          const { alt, az } = geoToAltAz(sat, observer);
+          if (alt > 0) {
+            const { x, y } = altAzToCanvas(
+              alt,
+              az,
+              p.width,
+              p.height,
+              observer.radius
+            );
+            if (!isOverlapping(x, y, p, sat.name, circleSize)) {
+              p.stroke("white");
+              p.strokeWeight(2 * scale);
+              p.fill(satColor);
+              p.text(sat.name, x, y - circleSize * scale - 1.2);
+              p.noStroke();
+            }
+          }
+        }
+      }
+
       for (const city of cities) {
         if (
           Math.abs(city.lat - observer.lat) < 0.1 &&
@@ -315,14 +325,14 @@
           p.height,
           observer.radius
         );
-        p.ellipse(x, y, 12 * scale, 12 * scale);
         p.textAlign(p.CENTER, p.TOP);
+        p.stroke("white");
+        p.strokeWeight(2 * scale);
+        p.fill(satColor);
         p.text(city.name, x, y + 8 * scale);
+        p.noStroke();
       }
 
-      p.fill(satColor);
-      p.textSize(24 * scale);
-      p.textAlign(p.CENTER, p.CENTER);
       for (const c of cardinals) {
         const { x, y } = altAzToCanvas(
           0,
@@ -331,15 +341,37 @@
           p.height,
           observer.radius
         );
+        p.textAlign(p.CENTER, p.CENTER);
+        p.stroke("white");
+        p.strokeWeight(2 * scale);
+        p.fill(satColor);
         p.text(c.label, x, y - 18 * scale);
+        p.noStroke();
+      }
+
+      for (const star of stars) {
+        const { alt, az } = raDecToAltAz(star, observer, date);
+        if (alt > 0) {
+          const { x, y } = altAzToCanvas(
+            alt,
+            az,
+            p.width,
+            p.height,
+            observer.radius
+          );
+          const starSize = Math.max(1 * scale, 3 * scale - star.mag);
+          p.noStroke();
+          p.fill(255);
+          p.ellipse(x, y, starSize + 3 * scale, starSize + 3 * scale);
+          p.fill(starColor);
+          p.ellipse(x, y, starSize, starSize);
+        }
       }
 
       if (satellites.length > 0) {
-        p.fill(satColor);
-        p.textSize(textSize * scale);
         for (const sat of satellites) {
           const { alt, az } = geoToAltAz(sat, observer);
-          if (alt > 0) {
+          if (alt > 0 && showCircles) {
             const { x, y } = altAzToCanvas(
               alt,
               az,
@@ -347,19 +379,34 @@
               p.height,
               observer.radius
             );
-            if (showCircles) p.ellipse(x, y, circleSize, circleSize);
-            if (showNames && !isOverlapping(x, y, p, sat.name, circleSize)) {
-              // p.fill([...satColor, 90]);
-              p.fill(satColor);
-              p.stroke("white");
-              p.strokeWeight(2 * scale);
-              p.text(sat.name, x, y - circleSize * scale - 1.2);
-              p.noStroke();
-              p.strokeWeight(1 * scale);
-              p.fill(satColor);
-            }
+            p.noStroke();
+            p.fill(255);
+            p.ellipse(x, y, circleSize + 3 * scale, circleSize + 3 * scale);
+            p.fill(satColor);
+            p.ellipse(x, y, circleSize, circleSize);
           }
         }
+      }
+
+      for (const city of cities) {
+        if (
+          Math.abs(city.lat - observer.lat) < 0.1 &&
+          Math.abs(city.lon - observer.lon) < 0.1
+        )
+          continue;
+        const { alt, az } = geoToAltAz(city, observer);
+        const { x, y } = altAzToCanvas(
+          alt,
+          az,
+          p.width,
+          p.height,
+          observer.radius
+        );
+        p.noStroke();
+        p.fill(255);
+        p.ellipse(x, y, 12 * scale + 3 * scale, 12 * scale + 3 * scale);
+        p.fill(satColor);
+        p.ellipse(x, y, 12 * scale, 12 * scale);
       }
 
       p.push();
@@ -417,7 +464,7 @@
     };
 
     p.windowResized = () => {
-      let dpr = 12; //window.devicePixelRatio || 1;
+      let dpr = 10; //window.devicePixelRatio || 1;
       let w = container?.offsetWidth || window.innerWidth;
       let h = container?.offsetHeight || window.innerHeight;
       p.resizeCanvas(w * dpr, h * dpr);
@@ -431,7 +478,7 @@
     const canvas = container.querySelector("canvas");
     if (!canvas) return;
 
-    let dpr = 12; //window.devicePixelRatio || 1;
+    let dpr = 10; //window.devicePixelRatio || 1;
 
     const sourceW = crop.w * dpr;
     const sourceH = crop.h * dpr;
@@ -507,6 +554,7 @@
   </label>
 </div>
 
+<About />
 <div class="viz-container" bind:this={container}>
   <P5 {sketch} />
 </div>
