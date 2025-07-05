@@ -3,31 +3,25 @@
   import * as d3 from "d3";
   import { onMount } from "svelte";
   import About from "$lib/components/About.svelte";
+  import Controls from "$lib/components/Controls.svelte";
 
   const query_radius = 140;
-
-  let observer = {
-    lat: 52.52,
-    lon: 13.405,
-    alt: 0,
-    radius: 18,
-    satid: 52,
-  };
-
+  let observer = { lat: 52.52, lon: 13.405, alt: 0, radius: 18, satid: 52 };
   let container;
   let satellites = [];
   let stars = [];
-  let showNames = true;
-  let showCircles = true;
-  let showStarNames = true;
-  let textSize = 1.5;
-  let circleSize = 2;
+  let showNames = true,
+    showCircles = true,
+    showStarNames = true;
+  let textSize = 1.5,
+    circleSize = 2;
+  let starColor = [170, 170, 170],
+    satColor = [0, 0, 0];
+  let fov = observer.radius; // Field of View in degrees,
 
-  let starColor = [170, 170, 170];
-  let satColor = [0, 0, 0];
+  let dpr = 5; //window.devicePixelRatio || 1;
 
   const cities = [];
-
   const printFormats = {
     A4: [2480, 3508],
     A3: [3508, 4960],
@@ -37,7 +31,6 @@
     "2xA0": [14043, 9933 * 2],
     "7x7A4": [2480 * 7, 3508 * 7],
   };
-
   const a4Tiling = {
     A4: [1, 1],
     A3: [1, 2],
@@ -47,16 +40,13 @@
     "2xA0": [4, 8],
     "7x7A4": [7, 7],
   };
-
   let selectedFormat = "A3";
-
   const cardinals = [
     { label: "N", az: 0 },
     { label: "E", az: 90 },
     { label: "S", az: 180 },
     { label: "W", az: 270 },
   ];
-
   let crop = {
     x: 0,
     y: 0,
@@ -67,27 +57,6 @@
     dragOffsetX: 0,
     dragOffsetY: 0,
   };
-
-  function updateCropRect() {
-    if (typeof window === "undefined" || !container) return;
-    const [pw, ph] = printFormats[selectedFormat];
-    const cw = container.offsetWidth;
-    const ch = container.offsetHeight;
-    const scale = Math.min(0.9, cw / pw, ch / ph);
-    crop.w = pw * scale;
-    crop.h = ph * scale;
-    crop.scale = scale;
-    crop.x = (cw - crop.w) / 2;
-    crop.y = (ch - crop.h) / 2;
-  }
-
-  onMount(() => {
-    updateCropRect();
-    window.addEventListener("resize", updateCropRect);
-  });
-
-  $: if (selectedFormat) updateCropRect();
-  $: if (container) updateCropRect();
 
   let EquatorialToHorizontal = null;
   let MakeObserver = null;
@@ -144,7 +113,6 @@
       Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
     let az = (Math.atan2(y, x) * 180) / Math.PI;
     az = (az + 360) % 360;
-
     const dSigma = Math.acos(
       Math.sin(lat1) * Math.sin(lat2) +
         Math.cos(lat1) * Math.cos(lat2) * Math.cos(dLon)
@@ -153,12 +121,55 @@
     return { alt, az };
   }
 
-  function altAzToCanvas(alt, az, width, height, fov = observer.radius) {
+  function altAzToCanvas(
+    alt,
+    az,
+    width,
+    height,
+    fov = observer.radius,
+    yOffset = 0
+  ) {
     const r = ((90 - alt) / fov) * (Math.min(width, height) / 2);
     const theta = (az - 90) * (Math.PI / 180);
     const x = width / 2 + r * Math.cos(theta);
-    const y = height / 2 + r * Math.sin(theta);
+    const y = height / 2 + r * Math.sin(theta) + yOffset;
     return { x, y };
+  }
+
+  let p5ref;
+  function triggerRedraw() {
+    if (p5ref && p5ref.redraw) p5ref.redraw();
+  }
+
+  $: triggerRedraw(),
+    [textSize, circleSize, showNames, showCircles, showStarNames, fov];
+
+  function updateCropRect() {
+    if (typeof window === "undefined" || !container) return;
+    const [pw, ph] = printFormats[selectedFormat];
+    const cw = container.offsetWidth;
+    const ch = container.offsetHeight;
+    const scale = Math.min(0.9, cw / pw, ch / ph);
+    crop.w = pw * scale;
+    crop.h = ph * scale;
+    crop.scale = scale;
+    crop.x = (cw - crop.w) / 2;
+    crop.y = (ch - crop.h) / 2;
+  }
+  onMount(() => {
+    updateCropRect();
+    window.addEventListener("resize", () => {
+      updateCropRect();
+      triggerRedraw();
+    });
+  });
+  $: if (selectedFormat) {
+    updateCropRect();
+    triggerRedraw();
+  }
+  $: if (container) {
+    updateCropRect();
+    triggerRedraw();
   }
 
   async function getUserLocation() {
@@ -177,7 +188,6 @@
       }
     });
   }
-
   async function fetchVisibleSatellites() {
     await getUserLocation();
     satellites = [];
@@ -191,23 +201,24 @@
         lat: s.satlat,
         lon: s.satlng,
       }));
+      triggerRedraw();
     } catch (err) {
       console.error(err);
     }
   }
-
   onMount(async () => {
     await d3.csv("hyglike_from_athyg_v32.csv").then((raw) => {
       stars = raw.filter(
-        (s) => s.mag !== undefined && !isNaN(+s.mag) && +s.mag < 8
+        (s) => s.mag !== undefined && !isNaN(+s.mag) && +s.mag < 20
       );
       starsReady = true;
+      triggerRedraw();
     });
-
     import("astronomy-engine").then((AstronomyEngine) => {
       EquatorialToHorizontal = AstronomyEngine.EquatorialToHorizontal;
       MakeObserver = AstronomyEngine.MakeObserver;
       astroReady = true;
+      triggerRedraw();
     });
   });
 
@@ -237,15 +248,13 @@
   }
 
   let sketch = (p) => {
+    p5ref = p;
     p.setup = () => {
-      let dpr = 10; //window.devicePixelRatio || 1;
       let w = container?.offsetWidth || window.innerWidth;
       let h = container?.offsetHeight || window.innerHeight;
-      p.createCanvas(
-        container?.offsetWidth * 1.1 || window.innerWidth,
-        container?.offsetHeight * 1.1 || window.innerHeight
-      );
+      p.createCanvas(w, h);
       p.pixelDensity(dpr);
+      p.noLoop();
     };
 
     p.draw = () => {
@@ -262,7 +271,6 @@
       p.background("white");
       usedLabels = [];
       const date = new Date();
-
       p.textSize(textSize * scale);
       p.textAlign(p.CENTER, p.CENTER);
 
@@ -275,7 +283,8 @@
               az,
               p.width,
               p.height,
-              observer.radius
+              observer.radius,
+              -450
             );
             const starSize = Math.max(1 * scale, 3 * scale - star.mag);
             if (!isOverlapping(x, y, p, star.proper, starSize * 1.2)) {
@@ -288,7 +297,6 @@
           }
         }
       }
-
       if (showNames && satellites.length > 0) {
         for (const sat of satellites) {
           const { alt, az } = geoToAltAz(sat, observer);
@@ -298,7 +306,8 @@
               az,
               p.width,
               p.height,
-              observer.radius
+              fov,
+              -450
             );
             if (!isOverlapping(x, y, p, sat.name, circleSize)) {
               p.stroke("white");
@@ -310,7 +319,6 @@
           }
         }
       }
-
       for (const city of cities) {
         if (
           Math.abs(city.lat - observer.lat) < 0.1 &&
@@ -323,7 +331,8 @@
           az,
           p.width,
           p.height,
-          observer.radius
+          fov,
+          -450
         );
         p.textAlign(p.CENTER, p.TOP);
         p.stroke("white");
@@ -332,14 +341,14 @@
         p.text(city.name, x, y + 8 * scale);
         p.noStroke();
       }
-
       for (const c of cardinals) {
         const { x, y } = altAzToCanvas(
           0,
           c.az,
           p.width,
           p.height,
-          observer.radius
+          fov,
+          -450
         );
         p.textAlign(p.CENTER, p.CENTER);
         p.stroke("white");
@@ -348,7 +357,6 @@
         p.text(c.label, x, y - 18 * scale);
         p.noStroke();
       }
-
       for (const star of stars) {
         const { alt, az } = raDecToAltAz(star, observer, date);
         if (alt > 0) {
@@ -357,7 +365,8 @@
             az,
             p.width,
             p.height,
-            observer.radius
+            fov,
+            -450
           );
           const starSize = Math.max(1 * scale, 3 * scale - star.mag);
           p.noStroke();
@@ -367,17 +376,17 @@
           p.ellipse(x, y, starSize, starSize);
         }
       }
-
-      if (satellites.length > 0) {
+      if (satellites.length > 0 && showCircles) {
         for (const sat of satellites) {
           const { alt, az } = geoToAltAz(sat, observer);
-          if (alt > 0 && showCircles) {
+          if (alt > 0) {
             const { x, y } = altAzToCanvas(
               alt,
               az,
               p.width,
               p.height,
-              observer.radius
+              fov,
+              -450
             );
             p.noStroke();
             p.fill(255);
@@ -387,7 +396,6 @@
           }
         }
       }
-
       for (const city of cities) {
         if (
           Math.abs(city.lat - observer.lat) < 0.1 &&
@@ -400,7 +408,8 @@
           az,
           p.width,
           p.height,
-          observer.radius
+          fov,
+          -450
         );
         p.noStroke();
         p.fill(255);
@@ -408,23 +417,19 @@
         p.fill(satColor);
         p.ellipse(x, y, 12 * scale, 12 * scale);
       }
-
       p.push();
       p.noFill();
       p.stroke(0, 80);
       p.strokeWeight(0.5);
       p.rect(crop.x, crop.y, crop.w, crop.h);
-
       const [cols, rows] = a4Tiling[selectedFormat];
       if (cols > 1 || rows > 1) {
         const tileWOnScreen = crop.w / cols;
         const tileHOnScreen = crop.h / rows;
-
         for (let i = 1; i < cols; i++) {
           let xx = crop.x + i * tileWOnScreen;
           p.line(xx, crop.y, xx, crop.y + crop.h);
         }
-
         for (let j = 1; j < rows; j++) {
           let yy = crop.y + j * tileHOnScreen;
           p.line(crop.x, yy, crop.x + crop.w, yy);
@@ -445,11 +450,12 @@
         crop.dragOffsetY = p.mouseY - crop.y;
       }
     };
-
     p.mouseReleased = () => {
-      crop.dragging = false;
+      if (crop.dragging) {
+        crop.dragging = false;
+        p.redraw();
+      }
     };
-
     p.mouseDragged = () => {
       if (crop.dragging) {
         crop.x = Math.max(
@@ -460,16 +466,15 @@
           0,
           Math.min(p.mouseY - crop.dragOffsetY, p.height - crop.h)
         );
+        p.redraw();
       }
     };
-
     p.windowResized = () => {
-      let dpr = 10; //window.devicePixelRatio || 1;
       let w = container?.offsetWidth || window.innerWidth;
       let h = container?.offsetHeight || window.innerHeight;
-      p.resizeCanvas(w * dpr, h * dpr);
-      p.pixelDensity(dpr);
+      p.resizeCanvas(w, h);
       updateCropRect();
+      p.redraw();
     };
   };
 
@@ -477,8 +482,6 @@
     const [cols, rows] = a4Tiling[format];
     const canvas = container.querySelector("canvas");
     if (!canvas) return;
-
-    let dpr = 10; //window.devicePixelRatio || 1;
 
     const sourceW = crop.w * dpr;
     const sourceH = crop.h * dpr;
@@ -514,49 +517,22 @@
   }
 </script>
 
-<div class="controls">
-  <button on:click={fetchVisibleSatellites}>Load Satellites</button>
-  <label>
-    Export Format:
-    <select bind:value={selectedFormat}>
-      {#each Object.keys(printFormats) as fmt}
-        <option value={fmt}>{fmt}</option>
-      {/each}
-    </select>
-  </label>
-  <button on:click={() => splitAndSaveTiles(selectedFormat)}>
-    Export {selectedFormat} (A4 tiles)
-  </button>
-
-  <label>
-    FOV:
-    <input type="range" min="10" max="180" bind:value={observer.radius} />
-    {observer.radius}°
-  </label>
-  <label>
-    Text Size:
-    <input type="range" min="0.1" max="24" step="0.1" bind:value={textSize} />
-    {textSize}px
-  </label>
-  <label>
-    Circle Size:
-    <input type="range" min="0.1" max="20" step="0.1" bind:value={circleSize} />
-    {circleSize}px
-  </label>
-  <label>
-    <input type="checkbox" bind:checked={showNames} /> Show Satellite Names
-  </label>
-  <label>
-    <input type="checkbox" bind:checked={showCircles} /> Show Satellite Circles
-  </label>
-  <label>
-    <input type="checkbox" bind:checked={showStarNames} /> Show Star Names
-  </label>
-</div>
-
+<Controls
+  bind:selectedFormat
+  {printFormats}
+  {observer}
+  bind:textSize
+  bind:fov
+  bind:circleSize
+  bind:showNames
+  bind:showCircles
+  bind:showStarNames
+  onExport={splitAndSaveTiles}
+  onLoadSatellites={fetchVisibleSatellites}
+/>
 <About />
 <div class="viz-container" bind:this={container}>
-  <P5 {sketch} />
+  <P5 {sketch} bind:this={p5ref} />
 </div>
 
 <style>
@@ -565,46 +541,10 @@
     height: 100% !important;
     display: block;
   }
-
-  .controls {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
-    z-index: 10;
-    background: rgba(251, 255, 229, 0.9);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    padding: 0.5rem;
-    border-radius: 0.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    min-width: 170px;
-    font-size: 13px;
-  }
-  .controls label {
-    font-size: 0.85rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  button {
-    padding: 0.35rem 0.65rem;
-    border: none;
-    border-radius: 0.4rem;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-  }
-  button:hover {
-    background: rgba(220, 220, 220, 0.8);
-  }
   .viz-container {
     width: 100vw;
     height: 100vh;
     position: relative;
     overflow: hidden;
-  }
-  :global(canvas) {
-    display: block;
   }
 </style>
