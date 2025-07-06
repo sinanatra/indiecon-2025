@@ -1,18 +1,13 @@
 <div class="about-popup">
   <h3>Reclaiming the Night Sky</h3>
   <p>
-    The presence of the internet is only visible through loading bars, WLAN
-    icons and the occasional 404 page. Its actual infrastructure - cables under
-    the oceans, servers located in deserts - remains hidden , fuelling the
-    illusion of a weightless and, above all, quiet network. But in recent years,
-    parts of the internet have begun to (re)manifest themselves above us: loud
-    and increasingly impossible to ignore. Our participatory intervention traces
-    these signals in orbit, making them visible as both metaphor and material.
-    Based on real-time satellite data, it translates the new digital landscape
-    into visual noise and printed protest. Between observation and interference,
-    between screens and printed matter, the work explores how publishing -
-    digital and analogue - can respond to the infrastructures that shape,
-    monitor and sometimes disturb our communication.
+    This toolkit is part of Reclaiming the night sky, developed for indiecon
+    2025. It examines how Internet infrastructure, particularly satellite
+    networks such as Starlink, is changing our night sky and digital
+    environment. It allows to print a series of A4 sheets to draw new fictional constellations by connecting
+    Starlink satellites and stars. It's a simple way to reflect on how
+    technology is transforming what we see above us and how we might imagine it
+    differently.
   </p>
 </div>
 
@@ -28,13 +23,13 @@
     border-radius: 0.5rem;
     min-width: 220px;
     max-width: 240px;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   h3 {
-    font-size: 10px;
+    font-size: 12px;
   }
-  
+
   .about-popup p {
     margin: 0;
   }

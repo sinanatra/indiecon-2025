@@ -17,7 +17,7 @@
     circleSize = 2;
   let starColor = [170, 170, 170],
     satColor = [0, 0, 0];
-  let fov = observer.radius; // Field of View in degrees,
+  let fov = observer.radius; 
 
   let dpr = 5; //window.devicePixelRatio || 1;
 
