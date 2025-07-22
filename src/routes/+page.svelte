@@ -1,26 +1,22 @@
 <script>
-  import P5 from "p5-svelte";
   import * as d3 from "d3";
   import { onMount } from "svelte";
   import About from "$lib/components/About.svelte";
   import Controls from "$lib/components/Controls.svelte";
 
-  const query_radius = 140;
   let observer = { lat: 52.52, lon: 13.405, alt: 0, radius: 18, satid: 52 };
-  let container;
   let satellites = [];
   let stars = [];
   let showNames = true,
     showCircles = true,
     showStarNames = true;
-  let textSize = 1.5,
-    circleSize = 2;
+  let textSize = 0.2,
+    circleSize = 0.1;
   let starColor = [170, 170, 170],
     satColor = [0, 0, 0];
-  let fov = observer.radius; 
-
-  let dpr = 5; //window.devicePixelRatio || 1;
-
+  let fov = observer.radius;
+  let labelPad = 10;
+  let container, canvas;
   const cities = [];
   const printFormats = {
     A4: [2480, 3508],
@@ -57,7 +53,6 @@
     dragOffsetX: 0,
     dragOffsetY: 0,
   };
-
   let EquatorialToHorizontal = null;
   let MakeObserver = null;
   let astroReady = false;
@@ -86,7 +81,6 @@
     if (Math.sin(haRad) > 0) az = 360 - az;
     return { alt, az };
   }
-
   function raDecToAltAz(star, observer, date = new Date()) {
     if (astroReady && EquatorialToHorizontal && MakeObserver) {
       const obs = MakeObserver(observer.lat, observer.lon, observer.alt || 0);
@@ -102,7 +96,6 @@
       return fallbackRaDecToAltAz(star, observer, date);
     }
   }
-
   function geoToAltAz(target, observer) {
     const lat1 = (observer.lat * Math.PI) / 180;
     const lat2 = (target.lat * Math.PI) / 180;
@@ -120,15 +113,7 @@
     const alt = 90 - (dSigma * 180) / Math.PI;
     return { alt, az };
   }
-
-  function altAzToCanvas(
-    alt,
-    az,
-    width,
-    height,
-    fov = observer.radius,
-    yOffset = 0
-  ) {
+  function altAzToCanvas(alt, az, width, height, fov, yOffset = 0) {
     const r = ((90 - alt) / fov) * (Math.min(width, height) / 2);
     const theta = (az - 90) * (Math.PI / 180);
     const x = width / 2 + r * Math.cos(theta);
@@ -136,9 +121,9 @@
     return { x, y };
   }
 
-  let p5ref;
   function triggerRedraw() {
-    if (p5ref && p5ref.redraw) p5ref.redraw();
+    if (!canvas) return;
+    drawWebUI();
   }
 
   $: triggerRedraw(),
@@ -149,7 +134,7 @@
     const [pw, ph] = printFormats[selectedFormat];
     const cw = container.offsetWidth;
     const ch = container.offsetHeight;
-    const scale = Math.min(0.9, cw / pw, ch / ph);
+    const scale = Math.min(0.92, cw / pw, ch / ph);
     crop.w = pw * scale;
     crop.h = ph * scale;
     crop.scale = scale;
@@ -191,7 +176,7 @@
   async function fetchVisibleSatellites() {
     await getUserLocation();
     satellites = [];
-    const url = `https://api.n2yo.com/rest/v1/satellite/above/${observer.lat}/${observer.lon}/${observer.alt}/${query_radius}/${observer.satid}/?apiKey=DDSWUW-YEQB3S-EEJPFN-45Y0`;
+    const url = `https://api.n2yo.com/rest/v1/satellite/above/${observer.lat}/${observer.lon}/${observer.alt}/140/${observer.satid}/?apiKey=DDSWUW-YEQB3S-EEJPFN-45Y0`;
     try {
       const res = await fetch(url);
       const data = await res.json();
@@ -222,17 +207,9 @@
     });
   });
 
-  let usedLabels = [];
-  function isOverlapping(x, y, ctx, text, radius = 10) {
-    let w = 0,
-      h = 0;
-    if (ctx.measureText) {
-      w = ctx.measureText(text).width;
-      h = textSize * 4;
-    } else if (ctx.textWidth) {
-      w = ctx.textWidth(text);
-      h = textSize * 4;
-    }
+  function isOverlapping(x, y, ctx, text, radius, usedLabels, fontHeight) {
+    let w = ctx.measureText(text).width;
+    let h = fontHeight;
     const labelRect = { x: x - w / 2, y: y - h, w, h: h + radius };
     for (const r of usedLabels) {
       if (
@@ -247,271 +224,274 @@
     return false;
   }
 
-  let sketch = (p) => {
-    p5ref = p;
-    p.setup = () => {
-      let w = container?.offsetWidth || window.innerWidth;
-      let h = container?.offsetHeight || window.innerHeight;
-      p.createCanvas(w, h);
-      p.pixelDensity(dpr);
-      p.noLoop();
-    };
+  function drawSceneOnContext(
+    ctx,
+    width,
+    height,
+    drawGrid = false,
+    tileViewport = null
+  ) {
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, width, height);
+    let usedLabels = [];
+    const date = new Date();
 
-    p.draw = () => {
-      const baseWidth = 2480;
-      const scale = p.width / baseWidth;
-      if (!starsReady) {
-        p.background("white");
-        p.fill(0);
-        p.textAlign(p.CENTER, p.CENTER);
-        p.textSize(22 * scale);
-        p.text("Loading stars...", p.width / 2, p.height / 2);
-        return;
-      }
-      p.background("white");
-      usedLabels = [];
-      const date = new Date();
-      p.textSize(textSize * scale);
-      p.textAlign(p.CENTER, p.CENTER);
+    let cropW = width,
+      cropH = height,
+      offsetX = 0,
+      offsetY = 0;
+    if (tileViewport) {
+      cropW = tileViewport.cropWidth;
+      cropH = tileViewport.cropHeight;
+      offsetX = tileViewport.offsetX;
+      offsetY = tileViewport.offsetY;
+    }
 
-      if (showStarNames) {
-        for (const star of stars) {
-          const { alt, az } = raDecToAltAz(star, observer, date);
-          if (alt > 0 && star.proper) {
-            const { x, y } = altAzToCanvas(
-              alt,
-              az,
-              p.width,
-              p.height,
-              observer.radius,
-              -450
-            );
-            const starSize = Math.max(1 * scale, 3 * scale - star.mag);
-            if (!isOverlapping(x, y, p, star.proper, starSize * 1.2)) {
-              p.stroke("white");
-              p.strokeWeight(2 * scale);
-              p.fill(starColor);
-              p.text(star.proper, x, y - starSize * scale - 1.2);
-              p.noStroke();
-            }
+    const fontHeight = textSize * (cropH / 50);
+    const starDot = circleSize * (cropH / 220);
+    ctx.font = `${fontHeight}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    function mapCoord({ x, y }) {
+      return { x: x - offsetX, y: y - offsetY };
+    }
+
+    if (starsReady && showStarNames) {
+      for (const star of stars) {
+        const { alt, az } = raDecToAltAz(star, observer, date);
+        if (alt > 0 && star.proper) {
+          const c = altAzToCanvas(alt, az, cropW, cropH, fov, 0);
+          const { x, y } = mapCoord(c);
+          const starSize = Math.max(1.2, (6.0 - star.mag) * (cropH / 700));
+          if (
+            !isOverlapping(
+              x,
+              y,
+              ctx,
+              star.proper,
+              starSize * 1.2,
+              usedLabels,
+              fontHeight
+            )
+          ) {
+            ctx.save();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "#fff";
+            ctx.strokeText(star.proper, x, y - starSize / 2 - labelPad);
+            ctx.fillStyle = `rgb(${starColor.join(",")})`;
+            ctx.fillText(star.proper, x, y - starSize / 2 - labelPad);
+            ctx.restore();
           }
         }
       }
-      if (showNames && satellites.length > 0) {
-        for (const sat of satellites) {
-          const { alt, az } = geoToAltAz(sat, observer);
-          if (alt > 0) {
-            const { x, y } = altAzToCanvas(
-              alt,
-              az,
-              p.width,
-              p.height,
-              fov,
-              -450
-            );
-            if (!isOverlapping(x, y, p, sat.name, circleSize)) {
-              p.stroke("white");
-              p.strokeWeight(2 * scale);
-              p.fill(satColor);
-              p.text(sat.name, x, y - circleSize * scale - 1.2);
-              p.noStroke();
-            }
+    }
+
+    if (showNames && satellites.length > 0) {
+      for (const sat of satellites) {
+        const { alt, az } = geoToAltAz(sat, observer);
+        if (alt > 0) {
+          const c = altAzToCanvas(alt, az, cropW, cropH, fov, 0);
+          const { x, y } = mapCoord(c);
+          if (
+            !isOverlapping(x, y, ctx, sat.name, starDot, usedLabels, fontHeight)
+          ) {
+            ctx.save();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "#fff";
+            ctx.strokeText(sat.name, x, y - starDot / 2 - labelPad);
+            ctx.fillStyle = `rgb(${satColor.join(",")})`;
+            ctx.fillText(sat.name, x, y - starDot / 2 - labelPad);
+            ctx.restore();
           }
         }
       }
-      for (const city of cities) {
-        if (
-          Math.abs(city.lat - observer.lat) < 0.1 &&
-          Math.abs(city.lon - observer.lon) < 0.1
-        )
-          continue;
-        const { alt, az } = geoToAltAz(city, observer);
-        const { x, y } = altAzToCanvas(
-          alt,
-          az,
-          p.width,
-          p.height,
-          fov,
-          -450
-        );
-        p.textAlign(p.CENTER, p.TOP);
-        p.stroke("white");
-        p.strokeWeight(2 * scale);
-        p.fill(satColor);
-        p.text(city.name, x, y + 8 * scale);
-        p.noStroke();
-      }
-      for (const c of cardinals) {
-        const { x, y } = altAzToCanvas(
-          0,
-          c.az,
-          p.width,
-          p.height,
-          fov,
-          -450
-        );
-        p.textAlign(p.CENTER, p.CENTER);
-        p.stroke("white");
-        p.strokeWeight(2 * scale);
-        p.fill(satColor);
-        p.text(c.label, x, y - 18 * scale);
-        p.noStroke();
-      }
+    }
+
+    for (const city of cities) {
+      if (
+        Math.abs(city.lat - observer.lat) < 0.1 &&
+        Math.abs(city.lon - observer.lon) < 0.1
+      )
+        continue;
+      const { alt, az } = geoToAltAz(city, observer);
+      const c = altAzToCanvas(alt, az, cropW, cropH, fov, 0);
+      const { x, y } = mapCoord(c);
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#fff";
+      ctx.strokeText(city.name, x, y + 8);
+      ctx.fillStyle = `rgb(${satColor.join(",")})`;
+      ctx.fillText(city.name, x, y + 8);
+      ctx.restore();
+    }
+
+    for (const c of cardinals) {
+      const cc = altAzToCanvas(0, c.az, cropW, cropH, fov, 0);
+      const { x, y } = mapCoord(cc);
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#fff";
+      ctx.strokeText(c.label, x, y - 18);
+      ctx.fillStyle = `rgb(${satColor.join(",")})`;
+      ctx.fillText(c.label, x, y - 18);
+      ctx.restore();
+    }
+
+    if (starsReady) {
       for (const star of stars) {
         const { alt, az } = raDecToAltAz(star, observer, date);
         if (alt > 0) {
-          const { x, y } = altAzToCanvas(
-            alt,
-            az,
-            p.width,
-            p.height,
-            fov,
-            -450
-          );
-          const starSize = Math.max(1 * scale, 3 * scale - star.mag);
-          p.noStroke();
-          p.fill(255);
-          p.ellipse(x, y, starSize + 3 * scale, starSize + 3 * scale);
-          p.fill(starColor);
-          p.ellipse(x, y, starSize, starSize);
+          const c = altAzToCanvas(alt, az, cropW, cropH, fov, 0);
+          const { x, y } = mapCoord(c);
+          const starSize = Math.max(1.2, (6.0 - star.mag) * (cropH / 700));
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(x, y, Math.max(1, (starSize + 3) / 2), 0, 2 * Math.PI);
+          ctx.fillStyle = "#fff";
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(x, y, Math.max(1, starSize / 2), 0, 2 * Math.PI);
+          ctx.fillStyle = `rgb(${starColor.join(",")})`;
+          ctx.fill();
+          ctx.restore();
         }
       }
-      if (satellites.length > 0 && showCircles) {
-        for (const sat of satellites) {
-          const { alt, az } = geoToAltAz(sat, observer);
-          if (alt > 0) {
-            const { x, y } = altAzToCanvas(
-              alt,
-              az,
-              p.width,
-              p.height,
-              fov,
-              -450
-            );
-            p.noStroke();
-            p.fill(255);
-            p.ellipse(x, y, circleSize + 3 * scale, circleSize + 3 * scale);
-            p.fill(satColor);
-            p.ellipse(x, y, circleSize, circleSize);
-          }
+    }
+
+    if (satellites.length > 0 && showCircles) {
+      for (const sat of satellites) {
+        const { alt, az } = geoToAltAz(sat, observer);
+        if (alt > 0) {
+          const c = altAzToCanvas(alt, az, cropW, cropH, fov, 0);
+          const { x, y } = mapCoord(c);
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(x, y, Math.max(1, (starDot + 3) / 2), 0, 2 * Math.PI);
+          ctx.fillStyle = "#fff";
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(x, y, Math.max(1, starDot / 2), 0, 2 * Math.PI);
+          ctx.fillStyle = `rgb(${satColor.join(",")})`;
+          ctx.fill();
+          ctx.restore();
         }
       }
-      for (const city of cities) {
-        if (
-          Math.abs(city.lat - observer.lat) < 0.1 &&
-          Math.abs(city.lon - observer.lon) < 0.1
-        )
-          continue;
-        const { alt, az } = geoToAltAz(city, observer);
-        const { x, y } = altAzToCanvas(
-          alt,
-          az,
-          p.width,
-          p.height,
-          fov,
-          -450
-        );
-        p.noStroke();
-        p.fill(255);
-        p.ellipse(x, y, 12 * scale + 3 * scale, 12 * scale + 3 * scale);
-        p.fill(satColor);
-        p.ellipse(x, y, 12 * scale, 12 * scale);
-      }
-      p.push();
-      p.noFill();
-      p.stroke(0, 80);
-      p.strokeWeight(0.5);
-      p.rect(crop.x, crop.y, crop.w, crop.h);
+    }
+
+    if (drawGrid) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(0,0,0)";
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(0, 0, width, height);
       const [cols, rows] = a4Tiling[selectedFormat];
       if (cols > 1 || rows > 1) {
-        const tileWOnScreen = crop.w / cols;
-        const tileHOnScreen = crop.h / rows;
+        const tileWOnScreen = width / cols;
+        const tileHOnScreen = height / rows;
         for (let i = 1; i < cols; i++) {
-          let xx = crop.x + i * tileWOnScreen;
-          p.line(xx, crop.y, xx, crop.y + crop.h);
+          let xx = i * tileWOnScreen;
+          ctx.beginPath();
+          ctx.moveTo(xx, 0);
+          ctx.lineTo(xx, height);
+          ctx.stroke();
         }
         for (let j = 1; j < rows; j++) {
-          let yy = crop.y + j * tileHOnScreen;
-          p.line(crop.x, yy, crop.x + crop.w, yy);
+          let yy = j * tileHOnScreen;
+          ctx.beginPath();
+          ctx.moveTo(0, yy);
+          ctx.lineTo(width, yy);
+          ctx.stroke();
         }
       }
-      p.pop();
-    };
+      ctx.restore();
+    }
+  }
 
-    p.mousePressed = () => {
-      if (
-        p.mouseX > crop.x &&
-        p.mouseX < crop.x + crop.w &&
-        p.mouseY > crop.y &&
-        p.mouseY < crop.y + crop.h
-      ) {
-        crop.dragging = true;
-        crop.dragOffsetX = p.mouseX - crop.x;
-        crop.dragOffsetY = p.mouseY - crop.y;
-      }
-    };
-    p.mouseReleased = () => {
-      if (crop.dragging) {
-        crop.dragging = false;
-        p.redraw();
-      }
-    };
-    p.mouseDragged = () => {
-      if (crop.dragging) {
-        crop.x = Math.max(
-          0,
-          Math.min(p.mouseX - crop.dragOffsetX, p.width - crop.w)
-        );
-        crop.y = Math.max(
-          0,
-          Math.min(p.mouseY - crop.dragOffsetY, p.height - crop.h)
-        );
-        p.redraw();
-      }
-    };
-    p.windowResized = () => {
-      let w = container?.offsetWidth || window.innerWidth;
-      let h = container?.offsetHeight || window.innerHeight;
-      p.resizeCanvas(w, h);
-      updateCropRect();
-      p.redraw();
-    };
-  };
+  function drawWebUI() {
+    if (!canvas) return;
+    const visCtx = canvas.getContext("2d");
+    visCtx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const previewCanvas = document.createElement("canvas");
+    previewCanvas.width = crop.w;
+    previewCanvas.height = crop.h;
+    drawSceneOnContext(previewCanvas.getContext("2d"), crop.w, crop.h, true);
+
+    visCtx.drawImage(previewCanvas, crop.x, crop.y, crop.w, crop.h);
+  }
+
+  function mouseDown(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    if (
+      mx > crop.x &&
+      mx < crop.x + crop.w &&
+      my > crop.y &&
+      my < crop.y + crop.h
+    ) {
+      crop.dragging = true;
+      crop.dragOffsetX = mx - crop.x;
+      crop.dragOffsetY = my - crop.y;
+    }
+  }
+  function mouseUp() {
+    if (crop.dragging) {
+      crop.dragging = false;
+      triggerRedraw();
+    }
+  }
+  function mouseMove(e) {
+    if (!crop.dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    crop.x = Math.max(
+      0,
+      Math.min(mx - crop.dragOffsetX, canvas.width - crop.w)
+    );
+    crop.y = Math.max(
+      0,
+      Math.min(my - crop.dragOffsetY, canvas.height - crop.h)
+    );
+    triggerRedraw();
+  }
 
   async function splitAndSaveTiles(format = selectedFormat) {
     const [cols, rows] = a4Tiling[format];
-    const canvas = container.querySelector("canvas");
-    if (!canvas) return;
-
-    const sourceW = crop.w * dpr;
-    const sourceH = crop.h * dpr;
-    const tileSourceW = sourceW / cols;
-    const tileSourceH = sourceH / rows;
-
-    function sleep(ms) {
-      return new Promise((res) => setTimeout(res, ms));
-    }
+    const [pw, ph] = printFormats[format];
+    const tileW = Math.floor(pw / cols);
+    const tileH = Math.floor(ph / rows);
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
-        const sx = Math.round((crop.x + col * (crop.w / cols)) * dpr);
-        const sy = Math.round((crop.y + row * (crop.h / rows)) * dpr);
-        const sw = Math.round(tileSourceW);
-        const sh = Math.round(tileSourceH);
-
         const tile = document.createElement("canvas");
-        tile.width = sw;
-        tile.height = sh;
-        const tctx = tile.getContext("2d");
-        tctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+        tile.width = tileW;
+        tile.height = tileH;
+        const ctx = tile.getContext("2d");
+
+        const tileViewport = {
+          offsetX: col * tileW,
+          offsetY: row * tileH,
+          cropWidth: pw,
+          cropHeight: ph,
+          tileW,
+          tileH,
+        };
+
+        drawSceneOnContext(ctx, tileW, tileH, false, tileViewport);
 
         const url = tile.toDataURL("image/png");
         const a = document.createElement("a");
         a.href = url;
         a.download = `${format}_tile_row-${row + 1}_col-${col + 1}.png`;
         a.click();
-
-        await sleep(100);
+        await new Promise((r) => setTimeout(r, 120));
       }
     }
   }
@@ -532,7 +512,15 @@
 />
 <About />
 <div class="viz-container" bind:this={container}>
-  <P5 {sketch} bind:this={p5ref} />
+  <canvas
+    bind:this={canvas}
+    width={container ? container.offsetWidth : 800}
+    height={container ? container.offsetHeight : 600}
+    on:mousedown={mouseDown}
+    on:mouseup={mouseUp}
+    on:mouseleave={mouseUp}
+    on:mousemove={mouseMove}
+  />
 </div>
 
 <style>
