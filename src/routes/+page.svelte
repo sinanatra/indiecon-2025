@@ -16,6 +16,8 @@
     satColor = [0, 0, 0];
   let fov = observer.radius;
   let labelPad = 10;
+  const yShift = -450;
+
   let container, canvas;
   const cities = [];
   const printFormats = {
@@ -113,11 +115,12 @@
     const alt = 90 - (dSigma * 180) / Math.PI;
     return { alt, az };
   }
-  function altAzToCanvas(alt, az, width, height, fov, yOffset = 0) {
+
+  function altAzToCanvas(alt, az, width, height, fov, yShift = 0) {
     const r = ((90 - alt) / fov) * (Math.min(width, height) / 2);
     const theta = (az - 90) * (Math.PI / 180);
     const x = width / 2 + r * Math.cos(theta);
-    const y = height / 2 + r * Math.sin(theta) + yOffset;
+    const y = height / 2 + r * Math.sin(theta) + yShift;
     return { x, y };
   }
 
@@ -262,26 +265,40 @@
       for (const star of stars) {
         const { alt, az } = raDecToAltAz(star, observer, date);
         if (alt > 0 && star.proper) {
-          const c = altAzToCanvas(alt, az, cropW, cropH, fov, 0);
+          const c = altAzToCanvas(alt, az, cropW, cropH, fov, yShift);
           const { x, y } = mapCoord(c);
           const starSize = Math.max(1.2, (6.0 - star.mag) * (cropH / 700));
+          const dotRadius = Math.max(1, starSize / 2);
+          const labelY = y - (dotRadius + labelPad);
+
           if (
             !isOverlapping(
               x,
               y,
               ctx,
               star.proper,
-              starSize * 1.2,
+              dotRadius * 2,
               usedLabels,
               fontHeight
             )
           ) {
             ctx.save();
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 3.2;
             ctx.strokeStyle = "#fff";
-            ctx.strokeText(star.proper, x, y - starSize / 2 - labelPad);
+            ctx.strokeText(star.proper, x, labelY);
             ctx.fillStyle = `rgb(${starColor.join(",")})`;
-            ctx.fillText(star.proper, x, y - starSize / 2 - labelPad);
+            ctx.fillText(star.proper, x, labelY);
+            ctx.restore();
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, dotRadius + 3, 0, 2 * Math.PI);
+            ctx.fillStyle = "#fff";
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x, y, dotRadius, 0, 2 * Math.PI);
+            ctx.fillStyle = `rgb(${starColor.join(",")})`;
+            ctx.fill();
             ctx.restore();
           }
         }
@@ -292,17 +309,39 @@
       for (const sat of satellites) {
         const { alt, az } = geoToAltAz(sat, observer);
         if (alt > 0) {
-          const c = altAzToCanvas(alt, az, cropW, cropH, fov, 0);
+          const c = altAzToCanvas(alt, az, cropW, cropH, fov, yShift);
           const { x, y } = mapCoord(c);
+          const dotRadius = Math.max(1, starDot / 2);
+          const labelY = y - (dotRadius + labelPad);
+
           if (
-            !isOverlapping(x, y, ctx, sat.name, starDot, usedLabels, fontHeight)
+            !isOverlapping(
+              x,
+              y,
+              ctx,
+              sat.name,
+              dotRadius * 2,
+              usedLabels,
+              fontHeight
+            )
           ) {
             ctx.save();
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 3.2;
             ctx.strokeStyle = "#fff";
-            ctx.strokeText(sat.name, x, y - starDot / 2 - labelPad);
+            ctx.strokeText(sat.name, x, labelY);
             ctx.fillStyle = `rgb(${satColor.join(",")})`;
-            ctx.fillText(sat.name, x, y - starDot / 2 - labelPad);
+            ctx.fillText(sat.name, x, labelY);
+            ctx.restore();
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, dotRadius + 3, 0, 2 * Math.PI);
+            ctx.fillStyle = "#fff";
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x, y, dotRadius, 0, 2 * Math.PI);
+            ctx.fillStyle = `rgb(${satColor.join(",")})`;
+            ctx.fill();
             ctx.restore();
           }
         }
@@ -316,7 +355,8 @@
       )
         continue;
       const { alt, az } = geoToAltAz(city, observer);
-      const c = altAzToCanvas(alt, az, cropW, cropH, fov, 0);
+
+      const c = altAzToCanvas(alt, az, cropW, cropH, fov, yShift);
       const { x, y } = mapCoord(c);
       ctx.save();
       ctx.textAlign = "center";
@@ -330,7 +370,7 @@
     }
 
     for (const c of cardinals) {
-      const cc = altAzToCanvas(0, c.az, cropW, cropH, fov, 0);
+      const cc = altAzToCanvas(0, c.az, cropW, cropH, fov, yShift);
       const { x, y } = mapCoord(cc);
       ctx.save();
       ctx.textAlign = "center";
@@ -347,7 +387,7 @@
       for (const star of stars) {
         const { alt, az } = raDecToAltAz(star, observer, date);
         if (alt > 0) {
-          const c = altAzToCanvas(alt, az, cropW, cropH, fov, 0);
+          const c = altAzToCanvas(alt, az, cropW, cropH, fov, yShift);
           const { x, y } = mapCoord(c);
           const starSize = Math.max(1.2, (6.0 - star.mag) * (cropH / 700));
           ctx.save();
@@ -368,7 +408,7 @@
       for (const sat of satellites) {
         const { alt, az } = geoToAltAz(sat, observer);
         if (alt > 0) {
-          const c = altAzToCanvas(alt, az, cropW, cropH, fov, 0);
+          const c = altAzToCanvas(alt, az, cropW, cropH, fov, yShift);
           const { x, y } = mapCoord(c);
           ctx.save();
           ctx.beginPath();
