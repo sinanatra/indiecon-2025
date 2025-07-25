@@ -16,7 +16,6 @@
     satColor = [0, 0, 0];
   let fov = observer.radius;
   let labelPad = 10;
-  const yShift = -450;
 
   let container, canvas;
   const cities = [];
@@ -65,6 +64,10 @@
     "M28.87 14.68h-9.68a3.83 3.83 0 0 0-3.31-3.31V1.69h-1v9.68a3.83 3.83 0 0 0-3.31 3.31h-9.7v1h9.68a3.83 3.83 0 0 0 3.31 3.31v9.68h1v-9.68a3.83 3.83 0 0 0 3.31-3.31h9.68v-1Z";
   const svgStarViewBox = { minX: 0, minY: 0, width: 30, height: 30 };
   let svgStarPath = null;
+
+  function getYShift(h) {
+    return -h * 0.45;
+  }
 
   function fallbackRaDecToAltAz(star, observer, date = new Date()) {
     const lonHours = observer.lon / 15;
@@ -276,6 +279,7 @@
       offsetY = tileViewport.offsetY;
     }
 
+    const yShift = getYShift(cropH);
     const fontHeight = textSize * (cropH / 50);
     const starSvgSize = circleSize * cropH * 0.07;
     ctx.font = `${fontHeight}px sans-serif`;
@@ -288,18 +292,15 @@
 
     if (starsReady && showStarNames) {
       ctx.textAlign = "left";
-
       for (const star of stars) {
         const { alt, az } = raDecToAltAz(star, observer, date);
         if (alt > 0 && star.proper) {
           const c = altAzToCanvas(alt, az, cropW, cropH, fov, yShift);
           const { x, y } = mapCoord(c);
-
           const labelDX = starSvgSize * 0.15;
           const labelDY = starSvgSize * 0.3;
           const labelX = x + labelDX;
           const labelY = y - labelDY;
-
           if (
             !isOverlapping(
               labelX,
@@ -359,7 +360,6 @@
           const { x, y } = mapCoord(c);
           const dotRadius = Math.max(1, (circleSize * cropH) / 220 / 2);
           const labelY = y - (dotRadius + labelPad);
-
           if (
             !isOverlapping(
               x,
