@@ -1,10 +1,10 @@
 <div class="about-popup">
   <p>
-    This toolkit is part of Reclaiming the night sky, developed for indiecon
+    This tool is part of "reclaiming the night sky", developed for indiecon
     2025. It examines how Internet infrastructure, particularly satellite
     networks such as Starlink, is changing our night sky and digital
     environment. It allows to print a series of A4 sheets to draw new fictional
-    constellations by connecting Starlink satellites and stars. It's a simple
+    constellations by connecting Starlink satellites and stars. A simple
     way to reflect on how technology is transforming what we see above us and
     how we might imagine it differently.
   </p>
