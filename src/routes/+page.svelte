@@ -4,18 +4,18 @@
   import About from "$lib/components/About.svelte";
   import Controls from "$lib/components/Controls.svelte";
 
-  let observer = { lat: 52.52, lon: 13.405, alt: 0, radius: 18, satid: 52 };
+  let observer = { lat: 52.52, lon: 13.405, alt: 0, radius: 35, satid: 52 };
   let satellites = [];
   let stars = [];
   let showNames = true,
     showCircles = true,
     showStarNames = true;
-  let textSize = 0.2,
+  let textSize = 0.1,
     circleSize = 0.1;
   let starColor = [170, 170, 170],
     satColor = [0, 0, 0];
   let fov = observer.radius;
-  let labelPad = 10;
+  let labelPad = 20;
 
   let container, canvas;
   const cities = [];
@@ -26,7 +26,7 @@
     A1: [7016, 9933],
     A0: [9933, 14043],
     "2xA0": [14043, 9933 * 2],
-    "7x7A4": [2480 * 7, 3508 * 7],
+    "7x6A4": [2480 * 7, 3508 * 6],
     bookmark: [2480, 3508],
   };
   const a4Tiling = {
@@ -36,16 +36,18 @@
     A1: [2, 4],
     A0: [4, 4],
     "2xA0": [4, 8],
-    "7x7A4": [7, 7],
+    "7x6A4": [7, 6],
     bookmark: [1, 3],
   };
-  let selectedFormat = "A3";
+  let selectedFormat = "7x6A4";
+
   const cardinals = [
     { label: "N", az: 0 },
     { label: "E", az: 90 },
     { label: "S", az: 180 },
     { label: "W", az: 270 },
   ];
+
   let crop = {
     x: 0,
     y: 0,
@@ -67,7 +69,7 @@
   let svgStarPath = null;
 
   function getYShift(h) {
-    return -h * 0.45;
+    return -h * 0; //0.45;
   }
 
   function fallbackRaDecToAltAz(star, observer, date = new Date()) {
@@ -75,7 +77,7 @@
     const JD = date / 86400000 + 2440587.5;
     const D = JD - 2451545.0;
     let GMST = 18.697374558 + 24.06570982441908 * D;
-    GMST = GMST % 24;
+    GMST = ((GMST % 24) + 24) % 24;
     const LST = (GMST + lonHours) % 24;
     const raHours = parseFloat(star.ra);
     const ha = ((LST - raHours) * 15) % 360;
@@ -89,7 +91,7 @@
     const cosAz =
       (Math.sin(decRad) - Math.sin((alt * Math.PI) / 180) * Math.sin(latRad)) /
       (Math.cos((alt * Math.PI) / 180) * Math.cos(latRad));
-    let az = (Math.acos(cosAz) * 180) / Math.PI;
+    let az = (Math.acos(Math.min(1, Math.max(-1, cosAz))) * 180) / Math.PI;
     if (Math.sin(haRad) > 0) az = 360 - az;
     return { alt, az };
   }
@@ -125,7 +127,6 @@
     const alt = 90 - (dSigma * 180) / Math.PI;
     return { alt, az };
   }
-
   function altAzToCanvas(alt, az, width, height, fov, yShift = 0) {
     const r = ((90 - alt) / fov) * (Math.min(width, height) / 2);
     const theta = (az - 90) * (Math.PI / 180);
@@ -138,7 +139,6 @@
     if (!canvas) return;
     drawWebUI();
   }
-
   $: triggerRedraw(),
     [textSize, circleSize, showNames, showCircles, showStarNames, fov];
 
@@ -154,7 +154,28 @@
     crop.x = (cw - crop.w) / 2;
     crop.y = (ch - crop.h) / 2;
   }
-  onMount(() => {
+
+  let CONST_LINES = [];
+  onMount(async () => {
+    CONST_LINES = await d3.json("constellations.json");
+    console.log(CONST_LINES);
+
+    await d3.csv("hyglike_from_athyg_v32.csv").then((raw) => {
+      stars = raw.filter(
+        (s) => s.mag !== undefined && !isNaN(+s.mag) && +s.mag < 7
+      );
+
+      buildHipIndex(stars);
+      starsReady = true;
+      triggerRedraw();
+    });
+    import("astronomy-engine").then((AstronomyEngine) => {
+      EquatorialToHorizontal = AstronomyEngine.EquatorialToHorizontal;
+      MakeObserver = AstronomyEngine.MakeObserver;
+      astroReady = true;
+      triggerRedraw();
+    });
+
     updateCropRect();
     window.addEventListener("resize", () => {
       updateCropRect();
@@ -184,9 +205,7 @@
           },
           () => resolve()
         );
-      } else {
-        resolve();
-      }
+      } else resolve();
     });
   }
 
@@ -205,12 +224,12 @@
     try {
       const res = await fetch(`/api/satellites?${params.toString()}`);
       const data = await res.json();
-      if (!data.above) return;
-
+      if (!data?.above) return;
       satellites = data.above.map((s) => ({
         name: s.satname.replace("STARLINK-", "").replace("STARLINK ", ""),
         lat: s.satlat,
         lon: s.satlng,
+        launchDate: s.launchDate,
       }));
       triggerRedraw();
     } catch (err) {
@@ -218,36 +237,7 @@
     }
   }
 
-  onMount(async () => {
-    await d3.csv("hyglike_from_athyg_v32.csv").then((raw) => {
-      stars = raw.filter(
-        (s) => s.mag !== undefined && !isNaN(+s.mag) && +s.mag < 5
-      );
-      starsReady = true;
-      triggerRedraw();
-    });
-    import("astronomy-engine").then((AstronomyEngine) => {
-      EquatorialToHorizontal = AstronomyEngine.EquatorialToHorizontal;
-      MakeObserver = AstronomyEngine.MakeObserver;
-      astroReady = true;
-      triggerRedraw();
-    });
-  });
-
-  function isOverlapping(x, y, ctx, text, radius, usedLabels, fontHeight) {
-    let w = ctx.measureText(text).width;
-    let h = fontHeight;
-    const labelRect = { x: x - w / 2, y: y - h, w, h: h + radius };
-    for (const r of usedLabels) {
-      if (
-        labelRect.x < r.x + r.w &&
-        labelRect.x + labelRect.w > r.x &&
-        labelRect.y < r.y + r.h &&
-        labelRect.y + labelRect.h > r.y
-      )
-        return true;
-    }
-    usedLabels.push(labelRect);
+  function isOverlapping() {
     return false;
   }
 
@@ -264,6 +254,95 @@
     }
     ctx.fillStyle = fillColor;
     ctx.fill(svgStarPath);
+    ctx.restore();
+  }
+
+  let HIP_INDEX = new Map();
+  function buildHipIndex(list) {
+    HIP_INDEX.clear();
+    for (const s of list) {
+      if (s.hip) HIP_INDEX.set(String(s.hip).trim(), s);
+    }
+  }
+
+  function drawConstellation(
+    ctx,
+    code,
+    cropW,
+    cropH,
+    fov,
+    yShift,
+    date,
+    mapCoord
+  ) {
+    const spec = CONST_LINES[code];
+    if (!spec) return;
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(255,0,0,1)";
+
+    const drawnPts = [];
+
+    // --- Draw all edges ---
+    for (const [hipA, hipB] of spec.edges) {
+      const A = HIP_INDEX.get(String(hipA));
+      const B = HIP_INDEX.get(String(hipB));
+      if (!A || !B) continue;
+
+      const a = raDecToAltAz(A, observer, date);
+      const b = raDecToAltAz(B, observer, date);
+
+      if (a.alt <= 0 || b.alt <= 0) continue; // hide below horizon
+
+      const ca = mapCoord(
+        altAzToCanvas(a.alt, a.az, cropW, cropH, fov, yShift)
+      );
+      const cb = mapCoord(
+        altAzToCanvas(b.alt, b.az, cropW, cropH, fov, yShift)
+      );
+
+      drawnPts.push(ca, cb);
+
+      ctx.beginPath();
+      ctx.moveTo(ca.x, ca.y);
+      ctx.lineTo(cb.x, cb.y);
+      ctx.stroke();
+    }
+
+    // --- Draw label ---
+    let labelX, labelY;
+
+    if (spec.labelAnchorHip && HIP_INDEX.has(String(spec.labelAnchorHip))) {
+      // Use specific anchor star
+      const anchor = HIP_INDEX.get(String(spec.labelAnchorHip));
+      const { alt, az } = raDecToAltAz(anchor, observer, date);
+      if (alt > 0) {
+        const pos = mapCoord(altAzToCanvas(alt, az, cropW, cropH, fov, yShift));
+        labelX = pos.x + 10; // offset so it’s not right on the star
+        labelY = pos.y + 10;
+      }
+    }
+
+    if (labelX === undefined || labelY === undefined) {
+      // Fallback to average of drawn points
+      if (drawnPts.length) {
+        labelX = drawnPts.reduce((s, p) => s + p.x, 0) / drawnPts.length;
+        labelY = drawnPts.reduce((s, p) => s + p.y, 0) / drawnPts.length;
+      }
+    }
+
+    if (labelX !== undefined && labelY !== undefined) {
+      ctx.font = `${Math.max(3, Math.floor(cropW * 0.012))}px sans-serif`;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.strokeText(spec.name || code, labelX, labelY);
+      ctx.fillText(spec.name || code, labelX, labelY);
+    }
+
     ctx.restore();
   }
 
@@ -302,23 +381,39 @@
       return { x: x - offsetX, y: y - offsetY };
     }
 
+    for (const code of Object.keys(CONST_LINES)) {
+      drawConstellation(ctx, code, cropW, cropH, fov, yShift, date, mapCoord);
+    }
+
+    function getStarLabel(star) {
+      if (star.proper) return star.proper;
+      if (star.bf) return star.bf;
+      if (star.bayer && star.con) return `${star.bayer} ${star.con}`;
+      if (star.hr) return `HR ${star.hr}`;
+      if (star.hd) return `HD ${star.hd}`;
+      if (star.hip) return `HIP ${star.hip}`;
+      return null;
+    }
+
     if (starsReady && showStarNames) {
       ctx.textAlign = "left";
       for (const star of stars) {
         const { alt, az } = raDecToAltAz(star, observer, date);
-        if (alt > 0 && star.proper) {
+        const label = getStarLabel(star);
+        if (alt > 0 && label) {
           const c = altAzToCanvas(alt, az, cropW, cropH, fov, yShift);
           const { x, y } = mapCoord(c);
           const labelDX = starSvgSize * 0.15;
           const labelDY = starSvgSize * 0.3;
           const labelX = x + labelDX;
           const labelY = y - labelDY;
+
           if (
             !isOverlapping(
               labelX,
               labelY,
               ctx,
-              star.proper,
+              label,
               starSvgSize,
               usedLabels,
               fontHeight
@@ -327,9 +422,9 @@
             ctx.save();
             ctx.lineWidth = 3.2;
             ctx.strokeStyle = "#fff";
-            ctx.strokeText(star.proper, labelX, labelY);
+            ctx.strokeText(label, labelX, labelY);
             ctx.fillStyle = `rgb(${starColor.join(",")})`;
-            ctx.fillText(star.proper, labelX, labelY);
+            ctx.fillText(label, labelX, labelY);
             ctx.restore();
 
             drawSvgStar(
@@ -344,8 +439,8 @@
         }
       }
     }
-    ctx.textAlign = "center";
 
+    ctx.textAlign = "center";
     if (starsReady) {
       for (const star of stars) {
         const { alt, az } = raDecToAltAz(star, observer, date);
@@ -371,40 +466,55 @@
           const c = altAzToCanvas(alt, az, cropW, cropH, fov, yShift);
           const { x, y } = mapCoord(c);
           const dotRadius = Math.max(1, (circleSize * cropH) / 220 / 2);
-          const labelY = y - (dotRadius + labelPad);
-          if (
-            !isOverlapping(
-              x,
-              y,
-              ctx,
-              sat.name,
-              dotRadius * 2,
-              usedLabels,
-              fontHeight
-            )
-          ) {
-            ctx.save();
-            ctx.lineWidth = 3.2;
-            ctx.strokeStyle = "#fff";
-            ctx.strokeText(sat.name, x, labelY);
-            ctx.fillStyle = `rgb(${satColor.join(",")})`;
-            ctx.fillText(sat.name, x, labelY);
-            ctx.restore();
 
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(x, y, dotRadius + 3, 0, 2 * Math.PI);
-            ctx.fillStyle = "#fff";
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(x, y, dotRadius, 0, 2 * Math.PI);
-            ctx.fillStyle = `rgb(${satColor.join(",")})`;
-            ctx.fill();
-            ctx.restore();
+          const nameY = y - (dotRadius + labelPad);
+
+          ctx.save();
+
+          ctx.font = `${fontHeight}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.lineWidth = 3.2;
+          ctx.strokeStyle = "#fff";
+          ctx.strokeText(sat.name, x, nameY);
+          ctx.fillStyle = `rgb(${satColor.join(",")})`;
+          ctx.fillText(sat.name, x, nameY);
+
+          if (sat.launchDate) {
+            const dateObj = new Date(sat.launchDate);
+            if (!isNaN(dateObj)) {
+              const formatted = dateObj.toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              });
+              const dateText = `in orbit since ${formatted}`;
+              const smallFont = Math.max(2, fontHeight * 0.6);
+              const dateY = y + dotRadius + smallFont + 2;
+              ctx.font = `${smallFont}px sans-serif`;
+              ctx.fillStyle = "gray";
+              ctx.strokeStyle = "#fff";
+              ctx.lineWidth = 2;
+              ctx.strokeText(dateText, x, dateY);
+              ctx.fillText(dateText, x, dateY);
+            }
           }
+
+          ctx.restore();
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(x, y, dotRadius + 3, 0, 2 * Math.PI);
+          ctx.fillStyle = "#fff";
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(x, y, dotRadius, 0, 2 * Math.PI);
+          ctx.fillStyle = `rgb(${satColor.join(",")})`;
+          ctx.fill();
+          ctx.restore();
         }
       }
     }
+
     for (const city of cities) {
       if (
         Math.abs(city.lat - observer.lat) < 0.1 &&
@@ -412,7 +522,6 @@
       )
         continue;
       const { alt, az } = geoToAltAz(city, observer);
-
       const c = altAzToCanvas(alt, az, cropW, cropH, fov, yShift);
       const { x, y } = mapCoord(c);
       ctx.save();
@@ -425,6 +534,7 @@
       ctx.fillText(city.name, x, y + 8);
       ctx.restore();
     }
+
     for (const c of cardinals) {
       const cc = altAzToCanvas(0, c.az, cropW, cropH, fov, yShift);
       const { x, y } = mapCoord(cc);
@@ -438,6 +548,7 @@
       ctx.fillText(c.label, x, y - 18);
       ctx.restore();
     }
+
     if (satellites.length > 0 && showCircles) {
       for (const sat of satellites) {
         const { alt, az } = geoToAltAz(sat, observer);
@@ -469,6 +580,7 @@
         }
       }
     }
+
     if (drawGrid) {
       ctx.save();
       ctx.strokeStyle = "rgba(0,0,0)";
@@ -479,14 +591,14 @@
         const tileWOnScreen = width / cols;
         const tileHOnScreen = height / rows;
         for (let i = 1; i < cols; i++) {
-          let xx = i * tileWOnScreen;
+          let xx = Math.round(i * tileWOnScreen) + 0.5;
           ctx.beginPath();
           ctx.moveTo(xx, 0);
           ctx.lineTo(xx, height);
           ctx.stroke();
         }
         for (let j = 1; j < rows; j++) {
-          let yy = j * tileHOnScreen;
+          let yy = Math.round(j * tileHOnScreen) + 0.5;
           ctx.beginPath();
           ctx.moveTo(0, yy);
           ctx.lineTo(width, yy);
@@ -581,6 +693,17 @@
         };
 
         drawSceneOnContext(ctx, tileW, tileH, false, tileViewport);
+
+        ctx.save();
+        ctx.font = `${Math.max(10, tileW * 0.01)}px sans-serif`;
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const label = `${letters[col]}${row + 1}`;
+
+        ctx.fillText(label, 5, 5);
+        ctx.restore();
 
         const url = tile.toDataURL("image/png");
         const a = document.createElement("a");
