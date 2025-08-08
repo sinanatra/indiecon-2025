@@ -502,12 +502,23 @@
     const visCtx = canvas.getContext("2d");
     visCtx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const previewCanvas = document.createElement("canvas");
-    previewCanvas.width = crop.w;
-    previewCanvas.height = crop.h;
-    drawSceneOnContext(previewCanvas.getContext("2d"), crop.w, crop.h, true);
+    const pw = Math.round(crop.w);
+    const ph = Math.round(crop.h);
 
-    visCtx.drawImage(previewCanvas, crop.x, crop.y, crop.w, crop.h);
+    const previewCanvas = document.createElement("canvas");
+    previewCanvas.width = pw;
+    previewCanvas.height = ph;
+
+    drawSceneOnContext(previewCanvas.getContext("2d"), pw, ph, true);
+
+    visCtx.imageSmoothingEnabled = false;
+    visCtx.drawImage(
+      previewCanvas,
+      Math.round(crop.x),
+      Math.round(crop.y),
+      pw,
+      ph
+    );
   }
 
   function mouseDown(e) {
