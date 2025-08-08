@@ -36,6 +36,7 @@
     A1: [2, 4],
     A0: [4, 4],
     "2xA0": [4, 8],
+    "7x7A4": [7, 7],
     bookmark: [1, 3],
   };
   let selectedFormat = "A3";
@@ -188,14 +189,24 @@
       }
     });
   }
+
   async function fetchVisibleSatellites() {
     await getUserLocation();
     satellites = [];
-    const url = `https://api.n2yo.com/rest/v1/satellite/above/${observer.lat}/${observer.lon}/${observer.alt}/140/${observer.satid}/?apiKey=DDSWUW-YEQB3S-EEJPFN-45Y0`;
+
+    const params = new URLSearchParams({
+      lat: String(observer.lat),
+      lon: String(observer.lon),
+      alt: String(observer.alt ?? 0),
+      radius: "140",
+      category: String(observer.satid ?? 52),
+    });
+
     try {
-      const res = await fetch(url);
+      const res = await fetch(`/api/satellites?${params.toString()}`);
       const data = await res.json();
       if (!data.above) return;
+
       satellites = data.above.map((s) => ({
         name: s.satname.replace("STARLINK-", "").replace("STARLINK ", ""),
         lat: s.satlat,
@@ -206,6 +217,7 @@
       console.error(err);
     }
   }
+
   onMount(async () => {
     await d3.csv("hyglike_from_athyg_v32.csv").then((raw) => {
       stars = raw.filter(
