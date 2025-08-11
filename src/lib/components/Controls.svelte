@@ -11,6 +11,7 @@
   export let showStarNames;
   export let onExport;
   export let onLoadSatellites;
+  export let magLimit;
 
   function handleExport() {
     onExport && onExport();
@@ -34,6 +35,12 @@
   <button on:click={handleExport}>
     Export {selectedFormat} (A4 tiles)
   </button>
+
+  <label>
+    Magnitude Limit:
+    <input type="range" min="0" max="10" step="0.1" bind:value={magLimit} />
+    {magLimit}
+  </label>
 
   <label>
     FOV:

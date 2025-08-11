@@ -1,20 +1,21 @@
 <script>
-  import P5 from "p5-svelte";
+  import { onMount, onDestroy } from "svelte";
 
   const searchRadius = 30;
   const starlinkCategory = 52;
   const fetchIntervalMs = 120000;
-  const displayDurationMs = 3000;
+  const displayDurationMs = 300;
 
-  let container;
   let userLocation = { lat: 53.5511, lon: 9.9937 };
   let satList = [];
   let satIndex = 0;
-  let currentSatId = null;
-  let showUntil = 0;
-  let lastFetchTime = 0;
-  let lastDisplayTime = 0;
   let finishedLoop = false;
+
+  let lastFetchTime = 0;
+  let listEl;
+  let emitTimer, refreshTimer;
+
+  let rows = [];
 
   function getUserLocation() {
     return new Promise((resolve) => {
@@ -29,7 +30,6 @@
 
   async function fetchNearbySatellites() {
     const { lat, lon } = userLocation;
-
     const params = new URLSearchParams({
       lat: String(lat),
       lon: String(lon),
@@ -49,85 +49,169 @@
         satList = json.above;
         satIndex = 0;
         finishedLoop = false;
-        console.log("Loaded", satList.length, "satellites");
       } else {
         satList = [];
         finishedLoop = true;
       }
+      lastFetchTime = performance.now();
     } catch (err) {
       console.error("Error fetching satellites:", err);
     }
   }
 
-  let sketch = (p) => {
-    p.setup = async () => {
-      p.createCanvas(window.innerWidth, window.innerHeight);
-      userLocation = await getUserLocation();
-      await fetchNearbySatellites();
-      lastFetchTime = performance.now();
-      lastDisplayTime = performance.now();
-    };
+  function emitNextRow() {
+    if (satIndex < satList.length) {
+      const sat = satList[satIndex++];
+      rows = [...rows, sat];
+      queueMicrotask(() => {
+        if (listEl) listEl.scrollTop = listEl.scrollHeight;
+      });
+      if (satIndex >= satList.length) finishedLoop = true;
+    }
+  }
 
-    p.draw = () => {
+  async function init() {
+    userLocation = await getUserLocation();
+    await fetchNearbySatellites();
+
+    emitTimer = setInterval(emitNextRow, displayDurationMs);
+    refreshTimer = setInterval(async () => {
       const now = performance.now();
-
-      // after finishing a full pass, schedule a refresh
-      if (now - lastFetchTime > fetchIntervalMs && finishedLoop) {
-        fetchNearbySatellites();
-        lastFetchTime = now;
+      if (finishedLoop && now - lastFetchTime > fetchIntervalMs) {
+        await fetchNearbySatellites();
       }
+    }, 1000);
+  }
 
-      if (
-        !finishedLoop &&
-        now - lastDisplayTime > displayDurationMs &&
-        satList.length > 0 &&
-        satIndex < satList.length
-      ) {
-        currentSatId = satList[satIndex].satname;
-        showUntil = now + displayDurationMs;
-        satIndex++;
-        lastDisplayTime = now;
-
-        if (satIndex >= satList.length) {
-          finishedLoop = true;
-        }
-      }
-
-      p.background(currentSatId && now < showUntil ? [255, 0, 0] : 0);
-      p.fill(currentSatId && now < showUntil ? 0 : 255);
-
-      p.textSize(24);
-      p.textAlign(p.LEFT, p.TOP);
-      p.text(
-        `Satellites found: ${satList.length}\nLocation: ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}`,
-        20,
-        20
-      );
-
-      if (currentSatId && now < showUntil) {
-        p.textAlign(p.CENTER, p.CENTER);
-        p.textSize(150);
-        p.text(`${currentSatId}`, p.width / 2, p.height / 2);
-      }
-    };
-
-    p.windowResized = () => {
-      p.resizeCanvas(window.innerWidth, window.innerHeight);
-    };
-  };
+  onMount(init);
+  onDestroy(() => {
+    clearInterval(emitTimer);
+    clearInterval(refreshTimer);
+  });
 </script>
 
-<div class="viz-container" bind:this={container}>
-  <P5 {sketch} />
+<div class="viz">
+  <header class="stats">
+    <div>Satellites found: <strong>{satList.length}</strong></div>
+    <div>
+      Location: {userLocation.lat.toFixed(4)}, {userLocation.lon.toFixed(4)}
+    </div>
+  </header>
+
+  <ul class="glossary" bind:this={listEl} aria-label="Stacking satellites">
+    {#each rows as sat}
+      <li>
+        <div class="row-main">
+          <span class="term" title={sat.satname}>{sat.satname}</span>
+          <span class="num">{sat.satid}</span>
+        </div>
+
+        <div class="row-meta">
+          <span>Designator: {sat.intDesignator}</span>
+          <span>Launch: {sat.launchDate}</span>
+        </div>
+
+        <div class="row-meta">
+          <span>Alt: {sat.satalt.toFixed(1)} km</span>
+          <span>Lat: {sat.satlat.toFixed(2)}°</span>
+          <span>Lon: {sat.satlng.toFixed(2)}°</span>
+        </div>
+      </li>
+    {/each}
+  </ul>
 </div>
 
 <style>
-  .viz-container {
+  .viz {
     width: 100vw;
     height: 100vh;
-    position: relative;
+    padding: 20px;
+    box-sizing: border-box;
+    background: #000;
+    color: #fff;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 16px;
   }
-  :global(canvas) {
-    display: block;
+
+  .stats {
+    display: flex;
+    gap: 24px;
+    align-items: baseline;
+    font:
+      500 14px/1.4 system-ui,
+      -apple-system,
+      Segoe UI,
+      Roboto,
+      sans-serif;
+    opacity: 0.9;
+  }
+
+  .glossary {
+    margin: 0;
+    padding: 8px;
+    list-style: none;
+    overflow-y: auto;
+    background: rgba(20, 20, 24, 0.35);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+  }
+
+  .glossary li {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    gap: 2px;
+  }
+  .glossary li:last-child {
+    border-bottom: none;
+  }
+
+  .row-main {
+    display: grid;
+    grid-template-columns: 1fr max-content;
+    gap: 16px;
+    align-items: baseline;
+  }
+
+  .term {
+    font:
+      600 16px/1.3 system-ui,
+      -apple-system,
+      Segoe UI,
+      Roboto,
+      sans-serif;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .num {
+    font:
+      600 14px/1 system-ui,
+      -apple-system,
+      Segoe UI,
+      Roboto,
+      sans-serif;
+    opacity: 0.9;
+    padding: 2px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .row-meta {
+    display: flex;
+    gap: 16px;
+    font:
+      400 12px/1.3 system-ui,
+      -apple-system,
+      Segoe UI,
+      Roboto,
+      sans-serif;
+    opacity: 0.8;
+    flex-wrap: wrap;
   }
 </style>

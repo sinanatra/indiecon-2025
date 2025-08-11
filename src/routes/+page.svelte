@@ -6,6 +6,7 @@
 
   let observer = { lat: 52.52, lon: 13.405, alt: 0, radius: 35, satid: 52 };
   let satellites = [];
+  let allStars = [];
   let stars = [];
   let showNames = true,
     showCircles = true,
@@ -16,6 +17,7 @@
     satColor = [0, 0, 0];
   let fov = observer.radius;
   let labelPad = 20;
+  let magLimit = 7;
 
   let container, canvas;
   const cities = [];
@@ -155,20 +157,19 @@
     crop.y = (ch - crop.h) / 2;
   }
 
-  let CONST_LINES = [];
+  let const_lines = [];
   onMount(async () => {
-    CONST_LINES = await d3.json("constellations.json");
-    console.log(CONST_LINES);
+    const_lines = await d3.json("constellations.json");
+    console.log(const_lines);
 
     await d3.csv("hyglike_from_athyg_v32.csv").then((raw) => {
-      stars = raw.filter(
-        (s) => s.mag !== undefined && !isNaN(+s.mag) && +s.mag < 7
-      );
-
+      allStars = raw.filter((s) => s.mag !== undefined && !isNaN(+s.mag));
+      stars = allStars.filter((s) => +s.mag < magLimit);
       buildHipIndex(stars);
       starsReady = true;
       triggerRedraw();
     });
+
     import("astronomy-engine").then((AstronomyEngine) => {
       EquatorialToHorizontal = AstronomyEngine.EquatorialToHorizontal;
       MakeObserver = AstronomyEngine.MakeObserver;
@@ -185,6 +186,13 @@
       svgStarPath = new Path2D(svgStarPathData);
     }
   });
+
+  $: if (starsReady) {
+    stars = allStars.filter((s) => +s.mag < magLimit);
+    buildHipIndex(stars);
+    triggerRedraw();
+  }
+
   $: if (selectedFormat) {
     updateCropRect();
     triggerRedraw();
@@ -275,7 +283,7 @@
     date,
     mapCoord
   ) {
-    const spec = CONST_LINES[code];
+    const spec = const_lines[code];
     if (!spec) return;
 
     ctx.save();
@@ -284,7 +292,6 @@
 
     const drawnPts = [];
 
-    // --- Draw all edges ---
     for (const [hipA, hipB] of spec.edges) {
       const A = HIP_INDEX.get(String(hipA));
       const B = HIP_INDEX.get(String(hipB));
@@ -293,7 +300,7 @@
       const a = raDecToAltAz(A, observer, date);
       const b = raDecToAltAz(B, observer, date);
 
-      if (a.alt <= 0 || b.alt <= 0) continue; // hide below horizon
+      if (a.alt <= 0 || b.alt <= 0) continue;
 
       const ca = mapCoord(
         altAzToCanvas(a.alt, a.az, cropW, cropH, fov, yShift)
@@ -310,38 +317,35 @@
       ctx.stroke();
     }
 
-    // --- Draw label ---
     let labelX, labelY;
 
     if (spec.labelAnchorHip && HIP_INDEX.has(String(spec.labelAnchorHip))) {
-      // Use specific anchor star
       const anchor = HIP_INDEX.get(String(spec.labelAnchorHip));
       const { alt, az } = raDecToAltAz(anchor, observer, date);
       if (alt > 0) {
         const pos = mapCoord(altAzToCanvas(alt, az, cropW, cropH, fov, yShift));
-        labelX = pos.x + 10; // offset so it’s not right on the star
+        labelX = pos.x + 10;
         labelY = pos.y + 10;
       }
     }
 
     if (labelX === undefined || labelY === undefined) {
-      // Fallback to average of drawn points
       if (drawnPts.length) {
         labelX = drawnPts.reduce((s, p) => s + p.x, 0) / drawnPts.length;
         labelY = drawnPts.reduce((s, p) => s + p.y, 0) / drawnPts.length;
       }
     }
 
-    if (labelX !== undefined && labelY !== undefined) {
-      ctx.font = `${Math.max(3, Math.floor(cropW * 0.012))}px sans-serif`;
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = "rgba(255,255,255,0.85)";
-      ctx.fillStyle = "rgba(0,0,0,0.6)";
-      ctx.strokeText(spec.name || code, labelX, labelY);
-      ctx.fillText(spec.name || code, labelX, labelY);
-    }
+    // if (labelX !== undefined && labelY !== undefined) {
+    //   ctx.font = `${Math.max(3, Math.floor(cropW * 0.005))}px sans-serif`;
+    //   ctx.textAlign = "left";
+    //   ctx.textBaseline = "top";
+    //   ctx.lineWidth = 3;
+    //   ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    //   ctx.fillStyle = "rgba(0,0,0,0.6)";
+    //   ctx.strokeText(spec.name || code, labelX, labelY);
+    //   ctx.fillText(spec.name || code, labelX, labelY);
+    // }
 
     ctx.restore();
   }
@@ -372,7 +376,7 @@
 
     const yShift = getYShift(cropH);
     const fontHeight = textSize * (cropH / 50);
-    const starSvgSize = circleSize * cropH * 0.07;
+    const starSvgSize = circleSize * cropH * 0.05;
     ctx.font = `${fontHeight}px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -381,7 +385,7 @@
       return { x: x - offsetX, y: y - offsetY };
     }
 
-    for (const code of Object.keys(CONST_LINES)) {
+    for (const code of Object.keys(const_lines)) {
       drawConstellation(ctx, code, cropW, cropH, fov, yShift, date, mapCoord);
     }
 
@@ -491,7 +495,7 @@
               const smallFont = Math.max(2, fontHeight * 0.6);
               const dateY = y + dotRadius + smallFont + 2;
               ctx.font = `${smallFont}px sans-serif`;
-              ctx.fillStyle = "gray";
+              ctx.fillStyle = "#444";
               ctx.strokeStyle = "#fff";
               ctx.lineWidth = 2;
               ctx.strokeText(dateText, x, dateY);
@@ -726,9 +730,11 @@
   bind:showNames
   bind:showCircles
   bind:showStarNames
+  bind:magLimit
   onExport={splitAndSaveTiles}
   onLoadSatellites={fetchVisibleSatellites}
 />
+
 <About />
 <div class="viz-container" bind:this={container}>
   <canvas
