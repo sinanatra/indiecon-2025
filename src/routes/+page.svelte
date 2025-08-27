@@ -15,6 +15,7 @@
     circleSize = 0.1;
   let starColor = [170, 170, 170],
     satColor = [0, 0, 0];
+  let launchDateColor = "#888";
   let fov = observer.radius;
   let labelPad = 20;
   let magLimit = 7;
@@ -131,10 +132,10 @@
   }
   function altAzToCanvas(alt, az, width, height, fov, yShift = 0) {
     const r = ((90 - alt) / fov) * (Math.min(width, height) / 2);
-    const theta = (az - 90) * (Math.PI / 180);
-    const x = width / 2 + r * Math.cos(theta);
-    const y = height / 2 + r * Math.sin(theta) + yShift;
-    return { x, y };
+    return {
+      x: width / 2 + r * Math.cos((az - 90) * (Math.PI / 180)),
+      y: height / 2 + r * Math.sin((az - 90) * (Math.PI / 180)) + yShift,
+    };
   }
 
   function triggerRedraw() {
@@ -160,7 +161,6 @@
   let const_lines = [];
   onMount(async () => {
     const_lines = await d3.json("constellations.json");
-    console.log(const_lines);
 
     await d3.csv("hyglike_from_athyg_v32.csv").then((raw) => {
       allStars = raw.filter((s) => s.mag !== undefined && !isNaN(+s.mag));
@@ -317,36 +317,6 @@
       ctx.stroke();
     }
 
-    let labelX, labelY;
-
-    if (spec.labelAnchorHip && HIP_INDEX.has(String(spec.labelAnchorHip))) {
-      const anchor = HIP_INDEX.get(String(spec.labelAnchorHip));
-      const { alt, az } = raDecToAltAz(anchor, observer, date);
-      if (alt > 0) {
-        const pos = mapCoord(altAzToCanvas(alt, az, cropW, cropH, fov, yShift));
-        labelX = pos.x + 10;
-        labelY = pos.y + 10;
-      }
-    }
-
-    if (labelX === undefined || labelY === undefined) {
-      if (drawnPts.length) {
-        labelX = drawnPts.reduce((s, p) => s + p.x, 0) / drawnPts.length;
-        labelY = drawnPts.reduce((s, p) => s + p.y, 0) / drawnPts.length;
-      }
-    }
-
-    // if (labelX !== undefined && labelY !== undefined) {
-    //   ctx.font = `${Math.max(3, Math.floor(cropW * 0.005))}px sans-serif`;
-    //   ctx.textAlign = "left";
-    //   ctx.textBaseline = "top";
-    //   ctx.lineWidth = 3;
-    //   ctx.strokeStyle = "rgba(255,255,255,0.85)";
-    //   ctx.fillStyle = "rgba(0,0,0,0.6)";
-    //   ctx.strokeText(spec.name || code, labelX, labelY);
-    //   ctx.fillText(spec.name || code, labelX, labelY);
-    // }
-
     ctx.restore();
   }
 
@@ -360,7 +330,7 @@
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, width, height);
-    let usedLabels = [];
+
     const date = new Date();
 
     let cropW = width,
@@ -380,6 +350,10 @@
     ctx.font = `${fontHeight}px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+
+    const baseR = (circleSize * cropH) / 220;
+    const dotR = Math.max(1, baseR + 1 / 2);
+    const halo = 3;
 
     function mapCoord({ x, y }) {
       return { x: x - offsetX, y: y - offsetY };
@@ -401,6 +375,7 @@
 
     if (starsReady && showStarNames) {
       ctx.textAlign = "left";
+      let usedLabels = [];
       for (const star of stars) {
         const { alt, az } = raDecToAltAz(star, observer, date);
         const label = getStarLabel(star);
@@ -469,9 +444,8 @@
         if (alt > 0) {
           const c = altAzToCanvas(alt, az, cropW, cropH, fov, yShift);
           const { x, y } = mapCoord(c);
-          const dotRadius = Math.max(1, (circleSize * cropH) / 220 / 2);
 
-          const nameY = y - (dotRadius + labelPad);
+          const nameY = y - (dotR + halo + labelPad);
 
           ctx.save();
 
@@ -483,37 +457,26 @@
           ctx.fillStyle = `rgb(${satColor.join(",")})`;
           ctx.fillText(sat.name, x, nameY);
 
-          if (sat.launchDate) {
-            const dateObj = new Date(sat.launchDate);
-            if (!isNaN(dateObj)) {
-              const formatted = dateObj.toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              });
-              const dateText = `in orbit since ${formatted}`;
-              const smallFont = Math.max(2, fontHeight * 0.6);
-              const dateY = y + dotRadius + smallFont + 2;
-              ctx.font = `${smallFont}px sans-serif`;
-              ctx.fillStyle = "#444";
-              ctx.strokeStyle = "#fff";
-              ctx.lineWidth = 2;
-              ctx.strokeText(dateText, x, dateY);
-              ctx.fillText(dateText, x, dateY);
-            }
-          }
+          // if (sat.launchDate) {
+          //   const dateObj = new Date(sat.launchDate);
+          //   if (!isNaN(dateObj)) {
+          //     const formatted = dateObj.toLocaleDateString("en-US", {
+          //       year: "numeric",
+          //       month: "long",
+          //       day: "numeric",
+          //     });
+          //     const dateText = `in orbit since ${formatted}`;
+          //     const smallFont = Math.max(2, fontHeight * 0.6);
+          //     const dateY = y + dotR + halo + smallFont + 2;
+          //     ctx.font = `${smallFont}px sans-serif`;
+          //     ctx.fillStyle = launchDateColor;
+          //     ctx.strokeStyle = "#fff";
+          //     ctx.lineWidth = 2;
+          //     ctx.strokeText(dateText, x, dateY);
+          //     ctx.fillText(dateText, x, dateY);
+          //   }
+          // }
 
-          ctx.restore();
-
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(x, y, dotRadius + 3, 0, 2 * Math.PI);
-          ctx.fillStyle = "#fff";
-          ctx.fill();
-          ctx.beginPath();
-          ctx.arc(x, y, dotRadius, 0, 2 * Math.PI);
-          ctx.fillStyle = `rgb(${satColor.join(",")})`;
-          ctx.fill();
           ctx.restore();
         }
       }
@@ -560,24 +523,14 @@
           const c = altAzToCanvas(alt, az, cropW, cropH, fov, yShift);
           const { x, y } = mapCoord(c);
           ctx.save();
+
           ctx.beginPath();
-          ctx.arc(
-            x,
-            y,
-            Math.max(1, ((circleSize * cropH) / 220 + 3) / 2),
-            0,
-            2 * Math.PI
-          );
+          ctx.arc(x, y, dotR + halo, 0, 2 * Math.PI);
           ctx.fillStyle = "#fff";
           ctx.fill();
+
           ctx.beginPath();
-          ctx.arc(
-            x,
-            y,
-            Math.max(1, (circleSize * cropH) / 220 / 2),
-            0,
-            2 * Math.PI
-          );
+          ctx.arc(x, y, dotR, 0, 2 * Math.PI);
           ctx.fillStyle = `rgb(${satColor.join(",")})`;
           ctx.fill();
           ctx.restore();
