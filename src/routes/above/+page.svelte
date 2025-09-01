@@ -80,7 +80,7 @@
       if (finishedLoop && now - lastFetchTime > fetchIntervalMs) {
         await fetchNearbySatellites();
       }
-    }, 1000);
+    }, 3000);
   }
 
   onMount(init);
@@ -103,7 +103,7 @@
       <li>
         <div class="row-main">
           <span class="term" title={sat.satname}>{sat.satname}</span>
-          <span class="num">{sat.satid}</span>
+          <!-- <span class="num">{sat.satid}</span> -->
         </div>
 
         <div class="row-meta">
@@ -125,25 +125,22 @@
   .viz {
     width: 100vw;
     height: 100vh;
-    padding: 20px;
+    padding: 5px;
     box-sizing: border-box;
     background: #000;
     color: #fff;
     display: grid;
     grid-template-rows: auto 1fr;
     gap: 16px;
+    font-size: 2vw;
   }
 
   .stats {
+    font-size: 1.5em;
     display: flex;
     gap: 24px;
     align-items: baseline;
-    font:
-      500 14px/1.4 system-ui,
-      -apple-system,
-      Segoe UI,
-      Roboto,
-      sans-serif;
+    font-family: Arial, Helvetica, sans-serif;
     opacity: 0.9;
   }
 
@@ -156,14 +153,15 @@
     backdrop-filter: blur(6px);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 12px;
+    font-size: 2em;
   }
 
   .glossary li {
     display: flex;
     flex-direction: column;
-    padding: 10px 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     gap: 2px;
+    padding: 10px;
   }
   .glossary li:last-child {
     border-bottom: none;
@@ -173,28 +171,21 @@
     display: grid;
     grid-template-columns: 1fr max-content;
     gap: 16px;
+    padding-bottom: 10px;
     align-items: baseline;
   }
 
   .term {
-    font:
-      600 16px/1.3 system-ui,
-      -apple-system,
-      Segoe UI,
-      Roboto,
-      sans-serif;
+    font-size: 1.2em;
+    color: yellow;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .num {
-    font:
-      600 14px/1 system-ui,
-      -apple-system,
-      Segoe UI,
-      Roboto,
-      sans-serif;
+    font-size: 1em;
+
     opacity: 0.9;
     padding: 2px 10px;
     border: 1px solid rgba(255, 255, 255, 0.18);
@@ -205,12 +196,8 @@
   .row-meta {
     display: flex;
     gap: 16px;
-    font:
-      400 12px/1.3 system-ui,
-      -apple-system,
-      Segoe UI,
-      Roboto,
-      sans-serif;
+    font-size: 0.9em;
+
     opacity: 0.8;
     flex-wrap: wrap;
   }
