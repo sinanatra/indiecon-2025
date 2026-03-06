@@ -41,7 +41,7 @@
     A0: [4, 4],
     "2xA0": [4, 8],
     "7x6A4": [7, 6],
-    "9 a4 horizontal 3x3": [3, 3],
+    "3x3": [3, 3],
     bookmark: [1, 3],
   };
   let selectedFormat = "7x6A4";
